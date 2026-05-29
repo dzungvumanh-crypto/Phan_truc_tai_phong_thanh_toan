@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Database
+database/duty_scheduler.db
+database/duty_scheduler.db-shm
+database/duty_scheduler.db-wal
+
+# Test output files
+_excel_output*.json
+
+# Claude local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# NiceGUI cache
+.nicegui/
