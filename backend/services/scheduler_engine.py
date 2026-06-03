@@ -12,7 +12,8 @@ Loại ca:
   - settlement_main / settlement_sub: ngày quyết toán (2 cụm cùng ngày)
 """
 import json
-from datetime import datetime
+import calendar as _cal
+from datetime import datetime, date as _date, timedelta
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -122,15 +123,31 @@ def _pick_leader(db: Session, pool_ld: List[Staff], requests: dict,
                  year: int, date_str: str,
                  rotation_role: str = "LD") -> Optional[Staff]:
     """
-    Chọn 1 Lãnh đạo.
+    Chọn 1 Lãnh đạo. Ưu tiên người chưa trực tuần này (fresh) trước.
     rotation_role: 'LD' | 'LD_friday' | 'LD_cutoff'
+    Fix: thêm week_ids để tránh phân LĐ đã kiêm SP backup cùng tuần.
     """
     if not pool_ld:
         return None
 
+    week_ids = get_week_assignees(db, date_str)
+
+    # Ưu tiên LĐ chưa trực tuần này (kể cả chưa làm SP backup)
+    fresh_ld   = [p for p in pool_ld if p.id not in week_ids]
+    repeat_ld  = [p for p in pool_ld if p.id in week_ids]
+
     requested_ids = set(requests.get("LD", []))
-    requested = [p for p in pool_ld if p.id in requested_ids]
-    candidates = requested if requested else pool_ld
+
+    if fresh_ld:
+        requested = [p for p in fresh_ld if p.id in requested_ids]
+        candidates = requested if requested else fresh_ld
+    else:
+        # Fallback: tất cả LĐ đã trực — bình thường khi 4 LĐ cho 5 ngày
+        requested = [p for p in repeat_ld if p.id in requested_ids]
+        candidates = requested if requested else repeat_ld
+
+    if not candidates:
+        return None
 
     winner = _pick_by_rotation(db, candidates, year, rotation_role, current_date=date_str)
     if winner:
@@ -142,15 +159,16 @@ def _pick_sp(db: Session, pool: dict, requests: dict,
              year: int, date_str: str,
              ld_role: str = "LD") -> Tuple[Optional[Staff], Optional[str]]:
     """
-    Chọn người tác nghiệp Song Phương. Logic 4 cấp (ưu tiên fresh trong tuần).
+    Chọn người tác nghiệp Song Phương. Logic 5 cấp (ưu tiên fresh trong tuần).
     Trả (person, warning_code):
       warning_code = None | 'leader_sp' | 'no_sp'
     ld_role: rotation role dùng khi backup leader kiêm nhiệm ('LD' | 'LD_friday' | 'LD_cutoff')
 
     Thứ tự ưu tiên:
       1a. SP sẵn + chưa trực tuần này
-      2.  Backup LD (Mỹ Linh/Bích Phương) chưa trực tuần này
-      1b. SP đã trực tuần này (fallback khi hết fresh SP và hết backup)
+      2a. Backup LD (Mỹ Linh/Bích Phương) chưa trực tuần này
+      2b. Backup LD đã trực tuần (vẫn ưu tiên hơn SP tổ trực lần 2) ← SP-FIX-1
+      1b. SP đã trực tuần này (fallback khi cả SP và backup đều kiệt)
       3.  Không ai → no_sp
     """
     pool_sp = pool["SP"]
@@ -168,16 +186,25 @@ def _pick_sp(db: Session, pool: dict, requests: dict,
             _update_rotation(db, winner.id, year, "SP", date_str)
         return winner, None
 
-    # Cấp 2: backup LD chưa trực tuần này — kiêm Lãnh đạo + Song Phương
+    # Cấp 2a: backup LD chưa trực tuần này — kiêm Lãnh đạo + Song Phương
+    # T3: dùng is_sp_backup từ DB (admin có thể toggle qua Roster List UI)
     backup = [p for p in pool_ld
-              if p.full_name in SP_BACKUP_LEADERS and p.id not in week_ids]
+              if getattr(p, "is_sp_backup", 0) == 1 and p.id not in week_ids]
     if backup:
         winner = _pick_by_rotation(db, backup, year, ld_role, current_date=date_str)
         if winner:
             _update_rotation(db, winner.id, year, ld_role, date_str)
         return winner, "leader_sp"
 
-    # Cấp 1b: fallback — dùng lại SP đã trực (tất cả fresh đã hết, không có backup)
+    # Cấp 2b: backup LD đã trực tuần (SP-FIX-1: vẫn ưu tiên hơn SP tổ trực lần 2)
+    backup_repeat = [p for p in pool_ld if getattr(p, "is_sp_backup", 0) == 1]
+    if backup_repeat:
+        winner = _pick_by_rotation(db, backup_repeat, year, ld_role, current_date=date_str)
+        if winner:
+            _update_rotation(db, winner.id, year, ld_role, date_str)
+        return winner, "leader_sp"
+
+    # Cấp 1b: fallback — dùng lại SP đã trực (tất cả fresh đã hết, cả backup cũng kiệt)
     if pool_sp:
         requested_ids = set(requests.get("SP", []))
         requested = [p for p in pool_sp if p.id in requested_ids]
@@ -379,7 +406,9 @@ def _generate_settlement(db: Session, date_str: str, year: int,
 def generate_schedule(db: Session, month: int, year: int,
                       overwrite_draft: bool = False) -> dict:
     """
-    Sinh lịch trực cho toàn bộ một tháng.
+    Sinh lịch trực theo tuần cho tháng chỉ định.
+    Mở rộng: bao phủ tuần đầy đủ chứa ngày 1 và ngày cuối tháng
+    (nối cuối tháng - đầu tháng để phân lịch theo đơn vị tuần).
     Bỏ qua: T7/CN, ngày lễ, ngày đã confirmed.
     Trả: {'created': N, 'skipped': M, 'warnings': [...]}
     """
@@ -387,7 +416,24 @@ def generate_schedule(db: Session, month: int, year: int,
     nv_count = config.nv_count if config else DEFAULT_NV_COUNT
 
     holiday_dates = get_holiday_dates(db, year)
-    working_days = get_month_working_days(month, year, holiday_dates)
+
+    # Mở rộng sang tuần đầy đủ: từ Thứ 2 tuần đầu đến Thứ 6 tuần cuối
+    first_day = _date(year, month, 1)
+    start_monday = first_day - timedelta(days=first_day.weekday())
+    last_day = _date(year, month, _cal.monthrange(year, month)[1])
+    end_friday = last_day + timedelta(days=(4 - last_day.weekday()) % 7)
+
+    # Bổ sung holiday của năm liền kề nếu end_friday sang năm mới
+    if end_friday.year != year:
+        holiday_dates = holiday_dates | get_holiday_dates(db, end_friday.year)
+
+    working_days = []
+    cur = start_monday
+    while cur <= end_friday:
+        ds = cur.isoformat()
+        if cur.weekday() < 5 and ds not in holiday_dates:
+            working_days.append(ds)
+        cur += timedelta(days=1)
 
     all_warnings: List[dict] = []
     created = 0
@@ -552,6 +598,10 @@ def _save_shift(db: Session, data: dict) -> DutyShift:
     nv_id_list = json.loads(data["nv_ids"])
     for idx, nv_id in enumerate(nv_id_list):
         db.add(DutyShiftNV(shift_id=shift.id, staff_id=nv_id, slot_index=idx))
+
+    # Flush DutyShiftNV để get_week_assignees() thấy NV của ngày này
+    # khi generate ngày tiếp theo (autoflush=False trong SessionLocal)
+    db.flush()
 
     return shift
 

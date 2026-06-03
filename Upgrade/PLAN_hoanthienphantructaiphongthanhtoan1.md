@@ -88,12 +88,11 @@ SP — 4 cấp fallback:
 | API: Stats (shift_count, monthly_summary, rotation) | ✅ Xong | ~80% |
 | Frontend: Export Excel (nút UI trong Planner + Week View) | ✅ Xong | ~90% |
 | Frontend: UI xác nhận ngày đặc biệt (Settings Tab 2) | ✅ Xong | ~85% |
-| Frontend: Schedule Planner (tuần) | ✅ Xong | ~95% |
-| Frontend: Week View (read-only + export) | ✅ Xong | ~95% |
-| Frontend: Week Grid component (week_grid.py) | ✅ Xong | ~100% |
+| Frontend: Schedule Planner (tuần) | ✅ Cơ bản | ~80% |
+| Frontend: Week View (read-only + export) | ✅ Cơ bản | ~75% |
 | Frontend: Roster List (danh sách NV) | ✅ Cơ bản | ~70% |
-| Frontend: Statistics | ✅ Xong | ~90% |
-| Frontend: Settings (5 tabs) | ✅ Xong | ~90% |
+| Frontend: Statistics | ✅ Cơ bản | ~65% |
+| Frontend: Settings (5 tabs) | ✅ Cơ bản | ~75% |
 
 ---
 
@@ -107,37 +106,37 @@ SP — 4 cấp fallback:
 #### ✅ A2. Xác nhận ngày cut-off/quyết toán — ĐÃ HOÀN THÀNH
 **Thực trạng**: `frontend/pages/settings.py` Tab 2 "📅 Ngày đặc biệt" đã có cột trạng thái Draft/Confirmed và nút "✅ Xác nhận" trực tiếp trên từng dòng, gọi `api_client.confirm_special_day()`.
 
-#### ✅ FIX-1. Bug: `get_monthly_summary` đếm cả ca draft — ĐÃ HOÀN THÀNH
+#### FIX-1. Bug: `get_monthly_summary` đếm cả ca draft
 **Vấn đề**: `backend/services/schedule_service.py` — query trong `get_monthly_summary()` không filter `status == "confirmed"`, trong khi `get_shift_count_by_person()` chỉ đếm confirmed. Hai endpoint thống kê trả số liệu không nhất quán — người dùng thấy tổng tháng khác tổng theo người.
 **Sửa**: Thêm `.filter(DutyShift.status == "confirmed")` vào query của `get_monthly_summary`.
 **File cần sửa**: `backend/services/schedule_service.py`
 
-#### ✅ FIX-2. Bug: `week_view.py` thiếu hiển thị `sp_warning` badge — ĐÃ HOÀN THÀNH
+#### FIX-2. Bug: `week_view.py` thiếu hiển thị `sp_warning` badge
 **Vấn đề**: `frontend/pages/week_view.py:render_week_grid()` không có đoạn hiển thị badge cảnh báo SP, trong khi `schedule_planner.py:148-152` có. Người dùng xem `/lich-tuan` (read-only) sẽ không thấy cảnh báo `leader_sp` / `no_sp` — thông tin quan trọng bị ẩn.
 **Sửa**: Thêm đoạn kiểm tra `shift.get("sp_warning")` và render badge tương tự như `schedule_planner.py`.
 **File cần sửa**: `frontend/pages/week_view.py`
 
-#### ✅ A3. Cảnh báo sau generate chưa hiển thị tổng hợp — ĐÃ HOÀN THÀNH
+#### A3. Cảnh báo sau generate chưa hiển thị tổng hợp
 **Vấn đề**: Badge `sp_warning` trên từng shift card đã có (`schedule_planner.py:148-152`), nhưng `warnings[]` trả về từ API generate-week bị bỏ qua hoàn toàn tại `schedule_planner.py:200-206` — không có banner/dialog tổng hợp sau khi nhấn "Phân tuần này".
 **Yêu cầu**: Sau generate, nếu `result.get("warnings")` không rỗng → hiển thị `ui.notify` màu cam hoặc dialog liệt kê từng cảnh báo (leader_sp, no_sp, no_leader).
 **Vị trí code chính xác**: Lỗi nằm trong closure `do_gen()` bên trong hàm `_generate_week()` của `schedule_planner.py`. Sau dòng `show_notify(f"Phân lịch thành công: {created} ca")`, thêm xử lý `warnings = result.get("warnings", [])` và gọi dialog nếu không rỗng.
 **File cần sửa**: `frontend/pages/schedule_planner.py` — closure `do_gen()` bên trong `_generate_week()`
 
-#### ✅ V1. Bug: `ShiftUpdate` schema không thể xóa SP — ĐÃ HOÀN THÀNH
+#### V1. Bug: `ShiftUpdate` schema không thể xóa SP — block A4
 **Vấn đề**: `backend/schemas/duty_schemas.py` — `sp_id: Optional[int] = None` bị hiểu là "không truyền" chứ không phải "xóa SP". `backend/services/schedule_service.py` trong `update_shift()` dùng `if sp_id is not None: shift.sp_id = sp_id` → không bao giờ có thể xóa SP về NULL.
 **Hậu quả**: Dialog sửa tay ca (A4) sẽ không cho phép bỏ trống slot SP nếu không fix V1 trước.
 **Fix**: Thêm `clear_sp: bool = False` vào `ShiftUpdate` schema; service kiểm tra `if body.clear_sp: shift.sp_id = None elif body.sp_id is not None: shift.sp_id = body.sp_id`.
 **File cần sửa**: `backend/schemas/duty_schemas.py`, `backend/services/schedule_service.py`
 **Mức độ**: 🔴 Critical — phải fix TRƯỚC khi implement A4
 
-#### ✅ V2. Bug: `validate_nv_request` không kiểm tra bảng `absences` — ĐÃ HOÀN THÀNH
+#### V2. Bug: `validate_nv_request` không kiểm tra bảng `absences`
 **Vấn đề**: `backend/services/constraint_service.py` — `validate_nv_request()` không cross-check với bảng `absences` — chỉ kiểm tra slot limit.
 **Hậu quả**: NV có thể đăng ký xin trực vào ngày đã khai báo vắng — vi phạm nghiệp vụ rõ ràng.
 **Fix**: 3 dòng — gọi `get_absent_staff_ids(db, date_str)` (đã có trong `staff_service.py`) rồi kiểm tra `if staff_id in absent_ids`.
 **File cần sửa**: `backend/services/constraint_service.py`
 **Mức độ**: 🔴 Critical (3 dòng, ít rủi ro)
 
-#### ✅ V6. Bug: `delete_staff` dùng LIKE string-match để tìm NV trong ca — ĐÃ HOÀN THÀNH
+#### V6. Bug: `delete_staff` dùng LIKE string-match để tìm NV trong ca
 **Vấn đề**: `backend/services/staff_service.py` — `delete_staff()` dùng `DutyShift.nv_ids.like(f'%{staff_id}%')` để tìm ca có NV này. Vì `nv_ids` lưu JSON string, `staff_id=1` sẽ match cả `"[11, 13, 21]"` — xóa nhầm NV không liên quan.
 **Fix**: Dùng bảng `DutyShiftNV` (đã có sẵn): `query(DutyShiftNV.shift_id).filter_by(staff_id=staff_id)` thay vì LIKE.
 **File cần sửa**: `backend/services/staff_service.py`
@@ -151,28 +150,28 @@ SP — 4 cấp fallback:
 **File cần sửa**: `frontend/pages/settings.py`, `backend/routers/constraints.py`
 **Mức độ**: 🔴 Critical (ảnh hưởng vòng xoay ngay)
 
-#### ✅ N3. Bug: `create_request` không check duplicate — ĐÃ HOÀN THÀNH
+#### N3. Bug: `create_request` không check duplicate — tạo đăng ký trùng
 **Vấn đề**: `backend/services/constraint_service.py:create_request()` — không có `UniqueConstraint` hay check trước `db.add()`. So sánh: `create_absence` và `create_special_day` có check idempotent — nhưng `create_request` không có.
 **Hậu quả**: Bấm nút "Thêm" 2 lần → 2 bản ghi identical → scheduler engine thấy người này 2 lần → ưu tiên kép.
 **Fix**: Check `existing = db.query(DutyRequest).filter_by(staff_id, request_type, specific_date, day_of_week, year).first()` trước khi add.
 **File cần sửa**: `backend/services/constraint_service.py`
 **Mức độ**: 🔴 Critical (5 dòng fix, rủi ro thấp)
 
-#### ✅ P1. Bug: `update_staff` không sync `rotation_state` khi đổi role — ĐÃ HOÀN THÀNH
+#### P1. Bug: `update_staff` không sync `rotation_state` khi đổi role
 **Vấn đề**: `backend/services/staff_service.py:update_staff()` — khi đổi role (VD: NV→LD), chỉ cập nhật `s.role` trong bảng `staff`. KHÔNG xóa rotation_state cũ (NV/NV_friday/NV_cutoff) và KHÔNG tạo rotation_state mới (LD/LD_friday/LD_cutoff).
 **Hậu quả**: Người vừa đổi role có rotation_state orphan + thiếu; khi lần đầu được phân ca với role mới, `_get_rotation_state()` tạo row với `position=staff_id` (xem P2) — sắp xếp vị trí vòng xoay không nhất quán.
 **Fix**: Trong `update_staff()`, nếu `role != old_role` → xóa rotation rows cũ, tạo rows mới với `position = display_order*10 + staff_id`.
 **File cần sửa**: `backend/services/staff_service.py`
 **Mức độ**: 🔴 Critical — Sprint 1
 
-#### ✅ P2. Bug: `_get_rotation_state` tạo row với `position=staff_id` — ĐÃ HOÀN THÀNH
+#### P2. Bug: `_get_rotation_state` tạo row với `position=staff_id` — sai thứ tự vòng xoay
 **Vấn đề**: `backend/services/scheduler_engine.py:_get_rotation_state()` — khi tạo row mới (fallback path), dùng `position=staff_id` (giá trị 1-25). Trong khi `init_rotation_for_year()` và `create_staff()` đều dùng `position = display_order*10 + staff_id` (giá trị 10x-99x).
 **Hậu quả**: Người được tạo rotation qua fallback có `position` thấp hơn nhiều → luôn được ưu tiên trong tie-break → phá vỡ thứ tự vòng xoay ban đầu.
 **Fix**: 3 dòng — query `Staff.display_order` rồi tính `pos = display_order*10 + staff_id`.
 **File cần sửa**: `backend/services/scheduler_engine.py`
 **Mức độ**: 🔴 Critical — Sprint 1 (cùng lúc với P1)
 
-#### ✅ R1. Bug: `database/` directory không tồn tại khi clone mới — ĐÃ HOÀN THÀNH
+#### R1. Bug: `database/` directory không tồn tại khi clone mới → backend crash
 **Vấn đề**: `.gitignore` bỏ qua `database/duty_scheduler.db` nhưng không có `.gitkeep` → khi clone từ git, thư mục `database/` không được tạo. `backend/config.py` không có `os.makedirs()` → `Base.metadata.create_all()` raise `OperationalError: unable to open database file` ngay khi start.
 **Hậu quả**: Người mới clone repo → chạy `start.bat` → backend crash ngay. Người dùng hiện tại không gặp vì thư mục đã có từ trước.
 **Fix**: 1 dòng trong `backend/config.py`: `os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)` sau khai báo `DB_PATH`.
@@ -196,12 +195,31 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 6. Tạo thêm ca `normal` ngày `2025-01-31` (không vi phạm UniqueConstraint vì khác `shift_type`)
 7. **Kết quả**: cùng ngày có 2 ca — `cutoff` (confirmed) + `normal` (draft) — UI hiện 2 ô, Excel 2 hàng
 
-**✅ Đã implement (Option C + cảnh báo)**: `delete_special_day()` xóa bản ghi special_day, không cascade xóa ca. Nếu có ca confirmed liên quan → trả về `{"deleted": True, "warning": "Ngày X đang có N ca đã xác nhận. Ca đó vẫn được giữ nguyên..."}`. Q6 đã được trả lời ngầm trong code: cho phép xóa tự do nhưng cảnh báo rõ.
+**⚠️ Cần xác nhận [Q6]**: Hành vi khi xóa special_day có ca liên quan?
+- **Option A** (đề xuất): Tự động xóa ca draft + cảnh báo HTTP 409 nếu có ca confirmed
+- **Option B**: Từ chối xóa nếu có bất kỳ ca nào
+- **Option C**: Cho phép xóa tự do (không cascade)
 
-> **Lưu ý tồn đọng**: Workflow bug 7 bước vẫn xảy ra nếu người dùng xóa special_day sau khi đã có ca confirmed + regenerate tạo thêm ca normal cùng ngày. Tuy nhiên, vì ca confirmed vẫn hiển thị đầy đủ và tên cột đủ phân biệt (shift_type khác nhau), mức độ ảnh hưởng thực tế thấp hơn ban đầu đánh giá.
-**File liên quan**: `backend/services/constraint_service.py`
+**Code fix mẫu** (Option A — cascade xóa draft, block nếu có confirmed):
+```python
+# backend/services/constraint_service.py — delete_special_day()
+def delete_special_day(db, special_day_id):
+    obj = db.query(SpecialDay).filter_by(id=special_day_id).first()
+    if not obj:
+        return False
+    # Xóa ca draft liên quan (giữ lại confirmed)
+    db.query(DutyShift).filter(
+        DutyShift.shift_date == obj.date,
+        DutyShift.status == "draft",
+    ).delete()
+    db.delete(obj)
+    db.commit()
+    return True
+```
+**File cần sửa**: `backend/services/constraint_service.py`, `backend/routers/constraints.py`
+**Mức độ**: 🔴 Critical (bug dữ liệu, xảy ra trong workflow thực tế)
 
-#### ✅ R4. UX: Compact view không hiển thị rõ "Lãnh đạo kiêm Song Phương" — ĐÃ HOÀN THÀNH
+#### R4. UX: Compact view không hiển thị rõ "Lãnh đạo kiêm Song Phương"
 **Vấn đề**: `frontend/components/shift_card.py:render_shift_card_compact()` — khi `sp_warning == "leader_sp"`, SP slot hiển thị "—" thay vì chỉ rõ ai đang kiêm nhiệm. Người đọc lịch thấy SP trống mà không biết Mỹ Linh/Bích Phương đang kiêm (trong khi file Excel xuất đã có `"(kiêm SP)"` suffix — nhất quán hơn).
 **Fix**: Nếu `sp_warning == "leader_sp"` và `sp_name == "—"` → hiển thị `"↑ {leader_name} (kiêm SP)"`.
 ```python
@@ -216,7 +234,7 @@ if sp_warning == "leader_sp" and (not sp_name or sp_name == "—"):
 **File cần sửa**: `frontend/components/shift_card.py`
 **Mức độ**: 🟡 Low — 3 dòng, làm cùng B1 refactor để không sửa 2 lần
 
-#### ✅ A4. Sửa tay ca trực (Manual Override) chưa có UI — ĐÃ HOÀN THÀNH
+#### A4. Sửa tay ca trực (Manual Override) chưa có UI
 **Vấn đề**: `shift_card.py:94-97` có button "Sửa" nhưng là stub — `on_edit_click` callback chưa bao giờ được truyền vào. `schedule_planner.py` dùng `render_shift_card_compact()` vốn không nhận `on_edit_click`. Không có dialog nào với dropdown chọn LĐ/SP/NV. `api_client.update_shift()` tồn tại nhưng chưa được gọi từ các trang.
 **Yêu cầu**: (1) Thêm `on_edit_click=None` vào `render_shift_card_compact()`, (2) implement dialog chọn lại LĐ/SP/NV từ dropdown, (3) gọi `api_client.update_shift()` khi lưu. Lưu ý: nếu NV list trống phải hiện warning.
 **Phụ thuộc**: Fix V1 trước (cần `clear_sp` để có thể bỏ trống SP).
@@ -230,7 +248,7 @@ if sp_warning == "leader_sp" and (not sp_name or sp_name == "—"):
 
 ### 🟠 NHÓM B — Tính năng còn thiếu (High Priority)
 
-#### ✅ B1. DRY Violation — Code trùng lặp giữa Week View và Schedule Planner — ĐÃ HOÀN THÀNH
+#### B1. DRY Violation — Code trùng lặp giữa Week View và Schedule Planner (Nâng lên Sprint 1)
 **Vấn đề**: `schedule_planner.py` và `week_view.py` có ~60 dòng code lặp 100%: toàn bộ `_render_week_grid`, cùng navigation helpers (`_get_monday_of_week`, `_prev_week`, `_next_week`, `_today_week`). Đây là DRY violation — fix bug ở một file phải nhớ fix cả file kia. FIX-2 là bằng chứng trực tiếp: `week_view.py` thiếu sp_warning badge vì code không được đồng bộ từ `schedule_planner.py`.
 **Yêu cầu**: Tách `render_week_grid()` thành `frontend/components/week_grid.py` dùng chung, nhận tham số `show_edit_button=False` và `show_warnings=True`. Cả 2 trang import từ đây. Xóa ~60 dòng duplicate.
 **Ưu tiên**: Nâng lên Sprint 1 — là technical debt có bug đi kèm, không phải chỉ UX.
@@ -243,8 +261,9 @@ if sp_warning == "leader_sp" and (not sp_name or sp_name == "—"):
 **Vấn đề**: `is_on_project` được seed cứng, chỉ thay đổi qua trang Danh sách NV → toggle.
 **Yêu cầu**: Thêm chức năng "Đi dự án từ ngày... đến ngày..." (date range) thay vì toggle cứng on/off — hiện tại dùng Absence để workaround nhưng không tường minh.
 
-#### ✅ B4. Chưa có thống kê so sánh công bằng phân ca — ĐÃ HOÀN THÀNH
-**Thực trạng**: `frontend/pages/statistics.py:195` — `ui.echart()` horizontal bar chart với markLine trung bình, màu theo nhóm LD/SP/NV.
+#### B4. Chưa có thống kê so sánh công bằng phân ca
+**Vấn đề**: Tab Thống kê hiện có shift_count nhưng chưa có visual chart.
+**Yêu cầu**: Thêm biểu đồ cột (bar chart) so sánh số ca từng người theo nhóm (LD/SP/NV), highlight người lệch nhiều so với trung bình.
 
 #### N4. Export Excel không hiển thị ngày lễ
 **Vấn đề**: `backend/services/export_service.py:build_week_excel()` — khi tuần có ngày lễ (không có shift), hàng trong Excel để trắng hoàn toàn. Người đọc không phân biệt được "trống chưa phân" hay "nghỉ lễ".
@@ -252,23 +271,63 @@ if sp_warning == "leader_sp" and (not sp_name or sp_name == "—"):
 **Làm cùng N8**.
 **File cần sửa**: `backend/services/export_service.py`, `backend/routers/export.py`
 
-#### ✅ N5. Lịch tuần UI không phân biệt "chưa phân" vs "ngày lễ" — ĐÃ HOÀN THÀNH
-**Thực trạng**: `schedule_planner.py:22-26` — `holiday_map` được populate tại init từ `api_client.get_special_days(day_type="holiday")`. `week_grid.py:72-78` — khi ngày lễ hiển thị icon celebration + label; khi chưa phân → `render_empty_day_card()`.
-**File đã sửa**: `frontend/components/week_grid.py`, `frontend/pages/schedule_planner.py`
+#### N5. Lịch tuần UI không phân biệt "chưa phân" vs "ngày lễ"
+**Vấn đề**: `schedule_planner.py` và `week_view.py` — khi ngày không có shift đều hiện `render_empty_day_card()` — không có cách biết đó là ngày lễ hay chưa được phân ca.
+**Fix**: Khi load tuần, gọi thêm `api_client.get_special_days()` để lấy ngày lễ. Truyền `holiday_map` vào `week_grid.py` component (B1). Khi ngày lễ → hiện chip màu xám "🎌 {tên lễ}"; khi chưa phân → `render_empty_day_card()`.
+**Làm cùng B1** (DRY refactor) để tránh sửa 2 file riêng.
+**File cần sửa**: `frontend/components/week_grid.py`, `frontend/pages/schedule_planner.py`, `frontend/pages/week_view.py`
 
-#### ✅ N6. Không có tính năng xóa vắng theo date range — ĐÃ HOÀN THÀNH
-**Thực trạng**: `backend/routers/constraints.py:66` — endpoint `DELETE /absences/range` đã có với query params `staff_id`, `from_date`, `to_date`.
-**File đã sửa**: `backend/routers/constraints.py`
+#### N6. Không có tính năng xóa vắng theo date range
+**Vấn đề**: Backend chỉ có `DELETE /absences/{absence_id}` (xóa 1 record). Không có xóa theo khoảng ngày.
+**UX pain point thực tế**: Khai báo vắng 30 ngày cho người đi công tác, người về sớm → phải xóa từng dòng một.
+**Fix**: Thêm `DELETE /absences/range?staff_id=&from_date=&to_date=` + form "Xóa khoảng" trong Settings Tab 3 (Khai báo vắng).
+**File cần sửa**: `backend/routers/constraints.py`, `frontend/api_client.py`, `frontend/pages/settings.py`
 
-#### ✅ B6. Confirm ca đơn lẻ từ shift card — ĐÃ HOÀN THÀNH
+#### B6. Confirm ca đơn lẻ từ shift card (Quick win — implement cùng A4)
 **Vấn đề**: Có `confirm_week` (xác nhận cả tuần) và `confirm_all` (cả tháng) nhưng không có cách confirm 1 ca riêng lẻ từ UI. Usecase thực tế: trong 1 tuần có 1 ca cần chỉnh lại — muốn confirm 4 ca còn lại trước.
 **Thực trạng**: `PUT /schedule/{shift_id}/confirm` ĐÃ CÓ trong backend; `api_client.confirm_shift()` ĐÃ CÓ — chỉ thiếu nút UI.
 **Yêu cầu**: Thêm nút "✅" nhỏ vào `render_shift_card_compact()` khi `status == "draft"`, tương tự nút sửa.
 **File cần sửa**: `frontend/components/shift_card.py`, `frontend/pages/schedule_planner.py`
 
-#### ✅ R3. `generate_schedule_for_week` skip toàn ngày nếu có ca confirmed — ĐÃ HOÀN THÀNH
-**Thực trạng**: `scheduler_engine.py:470-526` — đã tách riêng `confirmed_shifts` / `draft_shifts`. Khi `overwrite_draft=True`: xóa draft cũ rồi generate mới; ca confirmed được bảo vệ theo `shift_type`. Hướng 1 đã được implement.
-**File đã sửa**: `backend/services/scheduler_engine.py`
+#### R3. `generate_schedule_for_week` skip toàn ngày nếu có ca confirmed → settlement_sub draft bị kẹt
+**Vấn đề**: `backend/services/scheduler_engine.py` — logic hiện tại: nếu bất kỳ ca nào trong ngày có `status == "confirmed"` → skip toàn bộ ngày đó, kể cả các ca draft cùng ngày.
+
+**Code hiện tại (bug)**:
+```python
+# scheduler_engine.py — generate_schedule_for_week()
+existing = db.query(DutyShift).filter(DutyShift.shift_date == date_str).all()
+if existing:
+    has_confirmed = any(s.status == "confirmed" for s in existing)
+    if has_confirmed and not overwrite_confirmed:
+        skipped += len(existing)
+        continue   # ← skip TOÀN BỘ ngày, kể cả draft
+```
+
+**Tình huống thực tế**: Ngày quyết toán generate ra `settlement_main` (confirmed) + `settlement_sub` (draft). Admin muốn re-generate `settlement_sub` (thay đổi NV) → bấm "Ghi đè ca nháp" → toàn ngày vẫn bị skip vì `settlement_main` đã confirmed → `settlement_sub` không được regenerate.
+**Workaround hiện tại**: Xóa thủ công `settlement_sub` draft rồi generate lại.
+
+**Fix — 2 hướng**:
+
+*Hướng 1* — Tách logic confirmed/draft:
+```python
+confirmed_shifts = [s for s in existing if s.status == "confirmed"]
+draft_shifts     = [s for s in existing if s.status == "draft"]
+
+if confirmed_shifts and not overwrite_confirmed:
+    if draft_shifts and overwrite_draft:
+        for s in draft_shifts:
+            db.delete(s)
+        db.flush()
+    elif draft_shifts and not overwrite_draft:
+        skipped += len(draft_shifts)
+        continue
+    else:
+        continue  # không có draft, không cần làm gì
+```
+
+*Hướng 2* (đơn giản hơn) — Thêm checkbox "Chỉ regenerate ca nháp (giữ nguyên ca confirmed)" vào dialog generate trong `schedule_planner.py`.
+
+**File cần sửa**: `backend/services/scheduler_engine.py`, `frontend/pages/schedule_planner.py`
 
 #### P3. `generate_schedule` tháng không có UI — phải phân từng tuần thủ công
 **Vấn đề**: `frontend/api_client.py:generate_schedule()` tồn tại nhưng không trang nào gọi. Người dùng phải click "Phân tuần này" 4-5 lần để lập lịch cả tháng.
@@ -298,7 +357,7 @@ if sp_warning == "leader_sp" and (not sp_name or sp_name == "—"):
 **⚠️ Cần xác nhận nghiệp vụ [Q3]**: Người ký có thể thay đổi không?
 **File cần sửa**: `backend/models/duty_models.py`, `backend/services/export_service.py`, `backend/schemas/duty_schemas.py`, `frontend/pages/settings.py`
 
-#### ✅ R5. Requests của người đang đi dự án hiển thị trong Tab 4 mà không có dấu hiệu vô hiệu — ĐÃ HOÀN THÀNH
+#### R5. Requests của người đang đi dự án hiển thị trong Tab 4 mà không có dấu hiệu vô hiệu
 **Vấn đề**: `frontend/pages/settings.py` Tab 4 "Đăng ký trực" — `get_requests()` không filter `is_on_project`. Người đang đi dự án (`is_on_project=1`) vẫn có đăng ký hiển thị bình thường dù scheduler hoàn toàn bỏ qua họ khi generate lịch.
 **Hậu quả**: Người quản lý thấy "Nguyễn Thị X đăng ký Thứ 4 hằng tuần" nhưng đăng ký đó vô hiệu — không có dấu hiệu nào để biết.
 **Fix**: Với mỗi dòng đăng ký, kiểm tra `is_on_project` của staff và hiển thị badge "(Đang đi dự án)" hoặc làm mờ dòng đó.
@@ -369,54 +428,51 @@ Nút xuất toàn bộ DB ra file JSON hoặc SQLite backup, và import lại.
 
 ## 4. ĐỀ XUẤT LỘ TRÌNH HOÀN THIỆN
 
-### Sprint 1 — Sửa bug & Nghiệp vụ thiết yếu ✅ PHẦN LỚN ĐÃ XONG
+### Sprint 1 — Sửa bug & Nghiệp vụ thiết yếu (~6 ngày)
 ```
-~~[A1]    Kết nối nút Export Excel — ĐÃ XONG~~
-~~[A2]    UI xác nhận cutoff/settlement — ĐÃ XONG~~
-~~[R1]    Bug database/ directory (config.py:7 os.makedirs) — ĐÃ XONG~~
-~~[P2]    Bug _get_rotation_state position=staff_id — ĐÃ XONG~~
-~~[P1]    Bug update_staff không sync rotation_state — ĐÃ XONG~~
-~~[FIX-1] Bug monthly_summary đếm cả draft — ĐÃ XONG~~
-~~[FIX-2] Bug week_view thiếu sp_warning badge — ĐÃ XONG (qua week_grid.py)~~
-~~[V2]    Bug validate_nv_request không check absence — ĐÃ XONG~~
-~~[N3]    Bug create_request không check duplicate — ĐÃ XONG~~
-~~[V6]    Bug delete_staff LIKE string-match — ĐÃ XONG (dùng DutyShiftNV)~~
-~~[T2]    Fix confirm_dialog color param — ĐÃ XONG~~
-~~[A3]    Warnings dialog sau generate — ĐÃ XONG~~
-~~[C5]    run_with_feedback wrapper — ĐÃ XONG (common.py:72-94)~~
-~~[B1]    Tách week_grid component dùng chung — ĐÃ XONG (week_grid.py tồn tại)~~
-~~[V1]    ShiftUpdate thêm clear_sp field — ĐÃ XONG~~
-~~[A4+B6+R4] Dialog sửa tay ca + confirm đơn lẻ + leader_sp compact view — ĐÃ XONG~~
-~~[B4]    Biểu đồ bar chart thống kê — ĐÃ XONG (statistics.py:195)~~
-
---- CÒN LẠI CỦA SPRINT 1 ---
-[SP-FIX-1] _pick_sp() thêm Cấp 2b (LD backup đã trực tuần) — scheduler_engine.py (~15 phút) ← ƯU TIÊN
-[N2]       Filter dropdown request chỉ hiện NV — frontend/pages/settings.py (~15 phút)
-           ⚠️ Cần xác nhận Q1: LD/SP có được phép đăng ký xin trực không?
-[R2]       delete_special_day đã implement Option C+warning; xem xét có cần nâng lên Option A không
+~~[A1] Kết nối nút Export Excel — ĐÃ XONG~~
+~~[A2] UI xác nhận cutoff/settlement — ĐÃ XONG~~
+[R1]    Bug database/ directory không tồn tại (2 phút) — backend/config.py ← ĐẦU TIÊN
+[R2]    Bug delete_special_day không cascade ca (30 phút) — backend/services/constraint_service.py
+        ⚠️ Cần xác nhận Q6 trước khi chọn implementation (Option A/B/C)
+[P2]    Bug _get_rotation_state dùng position=staff_id sai (15 phút) — backend/services/scheduler_engine.py
+[P1]    Bug update_staff không sync rotation_state khi đổi role (1 giờ) — backend/services/staff_service.py
+[FIX-1] Bug monthly_summary đếm cả draft (10 phút) — backend/services/schedule_service.py
+[FIX-2] Bug week_view thiếu sp_warning badge (15 phút) — frontend/pages/week_view.py
+[V2]    Bug validate_nv_request không check absence (15 phút) — backend/services/constraint_service.py
+[N3]    Bug create_request không check duplicate (20 phút) — backend/services/constraint_service.py
+[V6]    Bug delete_staff LIKE string-match (30 phút) — backend/services/staff_service.py
+[N2]    Bug LD/SP đăng ký xin trực không giới hạn (15 phút) — frontend/pages/settings.py
+        ⚠️ Cần xác nhận Q1 trước khi implement: LD/SP có được đăng ký không?
+[T2]    Fix confirm_dialog color param (15 phút) — frontend/components/common.py
+[A3]    Warnings dialog sau generate — closure do_gen() trong schedule_planner.py (3-4 giờ)
+[C5]    run_with_feedback wrapper + áp dụng actions chính — frontend/components/common.py (3-4 giờ)
+[B1]    Tách week_grid component dùng chung (REFACTOR) — frontend/components/week_grid.py mới (1 ngày)
+[V1]    ShiftUpdate thêm clear_sp field — duty_schemas.py + schedule_service.py (1 giờ)
+[A4+B6+R4] Dialog sửa tay ca + nút confirm đơn lẻ + compact view leader_sp — schedule_planner.py + shift_card.py (1 ngày)
+[B4]    Biểu đồ bar chart thống kê (ui.echart built-in) — statistics.py (3-4 giờ)
 ```
 
-### Sprint 2 — Tính năng còn thiếu (~5 ngày sau khi loại các item đã xong)
+### Sprint 2 — Tính năng còn thiếu (~8 ngày)
 ```
-~~[R3]    scheduler_engine.py: xử lý partial confirmed — ĐÃ XONG~~
-~~[R5]    settings.py: badge người đi dự án trong requests — ĐÃ XONG~~
-~~[N5]    Week Grid: holiday_map + phân biệt ngày lễ — ĐÃ XONG~~
-~~[N6]    Xóa vắng theo range: DELETE /absences/range — ĐÃ XONG~~
-~~[V4]    get_week_assignees: Q2=Không — chỉ đọc confirmed là đúng thiết kế~~
-
---- CÒN LẠI ---
+[R3]    scheduler_engine.py: xử lý partial confirmed ngày quyết toán (3-4 giờ)
+        schedule_planner.py: UI hỗ trợ nếu cần thêm option
+[R5]    settings.py: badge người đi dự án trong danh sách requests (1 giờ)
 [P3]    Thêm nút "🗓️ Phân cả tháng" + dialog — frontend/pages/schedule_planner.py (3-4 giờ)
 [N1]    Tên người ký: thêm signer_name vào shift_config + Settings Tab 1 (3 giờ)
         ⚠️ Cần xác nhận Q3 trước khi implement
 [N4+N8] Export: hiện ngày lễ + label Cutoff/Friday trong file Excel (4 giờ)
-        build_week_excel() chưa nhận holiday_map; settlement đã có color nhưng cutoff/friday chưa có label
         ⚠️ Cần xác nhận Q4: có muốn hiển thị tên ngày lễ không?
+[N5]    Week Grid: phân biệt ngày lễ vs chưa phân ca trong lịch UI (2 giờ)
+        Làm cùng B1 component để tránh sửa 2 lần
+[N6]    Xóa vắng theo range: DELETE /absences/range + form UI (3 giờ)
 [N7]    Validate ngày hợp lệ khi đăng ký xin trực (T7/CN/lễ) (1 giờ)
 [B5]    Unconfirm endpoint + UI — backend/routers/schedule.py + schedule_planner.py
-[T3]    is_sp_backup field + UI toggle — thay thế SP_BACKUP_LEADERS hard-code trong config.py
-        Cần thêm cột vào bảng staff + toggle trong Roster List
+[T3]    is_sp_backup field + UI toggle — thay thế SP_BACKUP_LEADERS hard-code
+[V4]    get_week_assignees: xác nhận nghiệp vụ Q2 rồi fix — constraint_service.py
 [B2]    Trang xem lịch tháng (Month Calendar) — trang mới /lich-thang + navbar
 [C2]    Filter nhân sự trong lịch tuần (client-side) — schedule_planner.py
+[T4]    Transaction rollback scheduler_engine — backend/services/scheduler_engine.py
 [T5]    Error handling api_client — frontend/api_client.py
 ```
 
@@ -436,30 +492,31 @@ Nút xuất toàn bộ DB ra file JSON hoặc SQLite backup, và import lại.
 [D1]  Import lịch sử Excel
 ```
 
-### Sprint 1 — Thứ tự implement (cập nhật — chỉ còn 2 việc)
+### Sprint 1 — Thứ tự implement (tránh conflict)
 ```
- ~~0.  backend/config.py — R1 — ĐÃ XONG~~
- ~~1.  constraint_service.py — R2 — ĐÃ IMPLEMENT (Option C + warning)~~
- ~~2.  scheduler_engine.py — P2 — ĐÃ XONG~~
- ~~3.  staff_service.py — P1 + V6 — ĐÃ XONG~~
- ~~4.  schedule_service.py — FIX-1 — ĐÃ XONG~~
- ~~5.  week_view.py — FIX-2 — ĐÃ XONG (qua week_grid.py)~~
- ~~6.  constraint_service.py — V2 + N3 — ĐÃ XONG~~
- ~~7.  settings.py — N2 (chờ Q1)~~           ← CÒN LẠI
- ~~8.  common.py — T2 + C5 — ĐÃ XONG~~
- ~~9.  duty_schemas.py — V1 — ĐÃ XONG~~
-~~10.  schedule_service.py — V1 — ĐÃ XONG~~
-~~11.  schedule_planner.py — A3 — ĐÃ XONG~~
-~~12.  week_grid.py — B1 — ĐÃ XONG~~
-~~13.  schedule_planner.py — B1 — ĐÃ XONG~~
-~~14.  week_view.py — B1 — ĐÃ XONG~~
-~~15.  shift_card.py — A4+B6+R4 — ĐÃ XONG~~
-~~16.  schedule_planner.py — A4+B6 — ĐÃ XONG~~
-~~17.  statistics.py — B4 — ĐÃ XONG~~
-
- 1. backend/services/scheduler_engine.py — SP-FIX-1 (Cấp 2b trong _pick_sp) ← ƯU TIÊN
- 2. frontend/pages/settings.py — N2 (filter NV dropdown) ← sau khi xác nhận Q1
-    ⚠️ Chỉ implement sau khi xác nhận Q1: LD/SP có được phép đăng ký không?
+ 0. backend/config.py                       — R1 (os.makedirs database/) ← ĐẦU TIÊN
+ 1. backend/services/constraint_service.py  — R2 (delete_special_day cascade)
+    ⚠️ Cần xác nhận Q6 trước khi chọn Option A/B/C
+ 2. backend/services/scheduler_engine.py    — P2 (fix position trong _get_rotation_state)
+ 3. backend/services/staff_service.py       — P1 (sync rotation khi đổi role) + V6 (LIKE bug)
+ 4. backend/services/schedule_service.py    — FIX-1 (confirmed filter)
+ 5. frontend/pages/week_view.py             — FIX-2 (sp_warning badge)
+ 6. backend/services/constraint_service.py  — V2 (absence check) + N3 (duplicate request)
+ 7. frontend/pages/settings.py              — N2 (filter NV trong dropdown đăng ký)
+    ⚠️ Chỉ implement sau khi xác nhận Q1
+ 8. frontend/components/common.py           — T2 (confirm color) + C5 (run_with_feedback)
+ 9. backend/schemas/duty_schemas.py         — V1 (thêm clear_sp field)
+10. backend/services/schedule_service.py    — V1 (update_shift handle clear_sp)
+11. frontend/pages/schedule_planner.py      — A3 (warnings dialog trong do_gen)
+12. frontend/components/week_grid.py (mới)  — B1 (tách component dùng chung)
+13. frontend/pages/schedule_planner.py      — B1 (import week_grid, xóa code cũ)
+14. frontend/pages/week_view.py             — B1 (import week_grid, xóa code cũ)
+15. frontend/components/shift_card.py       — A4 + B6 + R4 (edit, confirm, leader_sp compact view)
+16. frontend/pages/schedule_planner.py      — A4 + B6 (implement dialogs)
+17. frontend/pages/statistics.py            — B4 (thêm ui.echart bar chart)
+18. [Sau xác nhận Q1] backend/routers/constraints.py — N2 backend validation nếu cần
+19. Verify R2: khai báo special_day → generate → xóa special_day → kiểm tra duty_shifts không có 2 ca cùng ngày
+20. Verify P1: tạo NV → đổi role LD → kiểm tra rotation_state rows đúng
 ```
 
 ### Câu hỏi nghiệp vụ cần xác nhận trước khi implement
@@ -521,136 +578,11 @@ Nút xuất toàn bộ DB ra file JSON hoặc SQLite backup, và import lại.
 
 | Ưu tiên | Việc cần làm | Ước lượng effort |
 |---------|-------------|-----------------|
-| ✅ Done | Export Excel UI, UI xác nhận cutoff/settlement | — |
-| ✅ Done | R1,P1,P2 (rotation), FIX-1,2, V1,2,6, N3, T2, B1, A3, A4, B4, B6, C5, R4 | — |
-| ✅ Done | R3 (partial confirmed), R5 (on-project badge), N5 (holiday UI), N6 (range delete) | — |
-| 🔴 Sprint 1 còn lại | SP-FIX-1 (Cấp 2b _pick_sp) + N2 (filter NV dropdown, chờ Q1) | ~30 phút |
-| 🟠 Sprint 2 | P3 (phân cả tháng) + N1 (signer_name, chờ Q3) + N4/N8 (export, chờ Q4) + N7 + B5 + T3 + B2 + C2 + T5 | ~5 ngày |
-| 🟡 Medium | C1 Dashboard + V3 startup multi-year | ~2 ngày |
-| 🟢 Low | P4,P5 (platform/env) + D1-D5, V5 ORM, T4 (WAL giảm ưu tiên) | ~5 ngày |
+| ✅ Done | Export Excel UI + UI xác nhận cutoff/settlement | — |
+| 🔴 Bug fix | R1 (db dir), R2 (cascade), P1,P2 (rotation), FIX-1,2, V1,2,6, N2,N3 + T2 | ~4 giờ |
+| 🔴 Critical | A3 warnings + A4 edit dialog + B1 DRY refactor + B6 + R4 compact view | ~3.5 ngày |
+| 🟠 Sprint 2 | R3 (partial confirmed) + R5 (on-project badge) + P3 + B4,C5,N1,N4,N5,N6,N8,B2,B5 | ~8 ngày |
+| 🟡 Medium | C1 Dashboard + C2 Filter + T3 is_sp_backup + N7 validate + V4 | ~4 ngày |
+| 🟢 Low | P4,P5 (platform/env) + D1-D5, V3, V5 ORM, T4 (WAL giảm ưu tiên), T5 | ~7 ngày |
 
-**Tổng ước lượng còn lại**: ~7-8 ngày dev (1 developer, full-time)
-
----
-
-## 7. KẾ HOẠCH SỬA LOGIC PHÂN TRỰC SONG PHƯƠNG (Bổ sung mới)
-
-> **Nguồn gốc yêu cầu**: Tổ Song Phương chỉ có ~4 người sẵn sàng (1 đi dự án), không đủ 5 người để phủ 5 ca/tuần. Cần đảm bảo mọi ca trong tuần đều có người xử lý Song Phương (NV tổ SP hoặc 2 lãnh đạo Trần Mỹ Linh / Trần Bích Phương), đồng thời NV xoay vòng công bằng giữa 5 ca.
-
----
-
-### 7.1 Phân tích vấn đề hiện tại
-
-#### Vấn đề 1 — Cấp 2b bị thiếu trong `_pick_sp()`
-
-Logic hiện tại trong `scheduler_engine.py:_pick_sp()`:
-
-```
-Cấp 1a: SP tổ + chưa trực tuần
-Cấp 2:  LD backup (Mỹ Linh/Bích Phương) + chưa trực tuần
-Cấp 1b: SP tổ đã trực tuần (fallback)
-Cấp 3:  Không ai → no_sp
-```
-
-**Lỗ hổng**: Khi cả 2 LD backup đã trực tuần (ở cấp 2), code rơi vào cấp 1b — tức là SP tổ phải trực 2 lần. Nhưng đúng nghiệp vụ, 2 LD backup này *có nhiệm vụ* backup SP — họ nên được dùng trước, kể cả khi đã trực 1 lần trong tuần, thay vì để SP tổ gánh 2 ca.
-
-**Cấp bị thiếu**:
-```
-Cấp 2b: LD backup đã trực tuần → vẫn ưu tiên hơn SP tổ trực lần 2
-```
-
-#### ~~Vấn đề 2 — `get_week_assignees()` chỉ đọc `confirmed`~~ — KHÔNG PHẢI BUG
-
-`get_week_assignees()` đọc chỉ `confirmed` là **quyết định thiết kế có chủ ý** (comment trong code: "V4 (Q2=Không): chỉ đếm confirmed — draft chưa xác nhận không cản generate lại"). Q2 đã trả lời: draft không tính là "đã phân trong tuần". Khi `overwrite_draft=True`, draft cũ bị xóa trước khi generate → `get_week_assignees()` trả set sạch, không bị stale data.
-
-#### Vấn đề 3 — Không có cơ chế "nợ tuần sau"
-
-Khi ai đó phải trực 2 ca/tuần do thiếu nhân lực, không có cơ chế ghi nhớ để ưu tiên giảm ca họ trong tuần tiếp theo. Tuy nhiên `rotation_state.shift_count` đã phần nào xử lý điều này — người trực nhiều sẽ tự động xuống thứ hạng sau khi fix Vấn đề 2.
-
----
-
-### 7.2 Kế hoạch sửa chi tiết
-
-#### SP-FIX-1 — Thêm Cấp 2b vào `_pick_sp()`
-
-**File**: `backend/services/scheduler_engine.py`  
-**Hàm**: `_pick_sp()`  
-**Mức độ**: 🔴 Critical  
-**Effort**: ~10 phút, ~8 dòng
-
-**Thứ tự ưu tiên mới (sau sửa)**:
-
-```
-Cấp 1a: SP tổ + chưa trực tuần này        ← giữ nguyên
-Cấp 2a: LD backup + chưa trực tuần         ← giữ nguyên
-Cấp 2b: LD backup đã trực tuần             ← THÊM MỚI
-Cấp 1b: SP tổ đã trực tuần                ← chỉ khi cả LD backup cũng kiệt
-Cấp 3:  Không ai → no_sp                  ← giữ nguyên
-```
-
-**Code cần thêm** (chèn sau block cấp 2, trước cấp 1b):
-
-```python
-# Cấp 2b: LD backup đã trực tuần
-# (vẫn ưu tiên hơn SP tổ trực 2 lần — đúng nghiệp vụ backup)
-backup_repeat = [p for p in pool_ld if p.full_name in SP_BACKUP_LEADERS]
-if backup_repeat:
-    winner = _pick_by_rotation(db, backup_repeat, year, ld_role, current_date=date_str)
-    if winner:
-        _update_rotation(db, winner.id, year, ld_role, date_str)
-    return winner, "leader_sp"
-```
-
-**Lưu ý**: Warning vẫn dùng `"leader_sp"` — không cần warning mới vì UI đã hiển thị được. Nếu muốn phân biệt rõ "LD backup trực lần 2", có thể thêm `"leader_sp_repeat"` (nice-to-have).
-
----
-
-#### ~~SP-FIX-2~~ — KHÔNG CẦN THỰC HIỆN
-
-**Lý do**: `get_week_assignees()` đọc chỉ `confirmed` là đúng theo thiết kế (Q2=Không). Code đã có comment giải thích rõ. Khi generate tuần mới hoàn toàn (overwrite_draft=True), draft cũ bị xóa trước nên không ảnh hưởng. Không cần thay đổi.
-
----
-
-#### SP-FIX-3 — Xoay vòng NV 5 ca công bằng (phụ thuộc SP-FIX-2)
-
-**Không cần sửa thêm code** sau khi làm SP-FIX-2. Logic hiện tại trong `_pick_nvs()` đã chia `fresh_nv` / `repeated_nv` đúng — chỉ cần `get_week_assignees()` trả đúng dữ liệu (đọc cả draft) thì xoay vòng NV trong tuần sẽ tự cân bằng.
-
-**Cơ chế tự cân bằng qua các tuần**: `rotation_state.shift_count` tăng mỗi lần được gán. Người trực 2 ca/tuần sẽ có count cao hơn, tự xuống thứ hạng tuần sau. Không cần bảng mới.
-
-**Trường hợp NV xin trực**: Logic hiện tại đã xử lý đúng — `_pick_nvs()` ưu tiên người đăng ký trong `duty_requests` dù họ đã trực tuần.
-
----
-
-### 7.3 Thứ tự implement
-
-| # | File | Thay đổi | Thời gian |
-|---|------|----------|-----------|
-| ~~1~~ | ~~constraint_service.py~~ | ~~SP-FIX-2: get_week_assignees đọc draft~~ | ~~5 phút~~ |
-| 1 | `backend/services/scheduler_engine.py` | SP-FIX-1: thêm Cấp 2b vào `_pick_sp()` | 15 phút |
-| 2 | Test | Generate 1 tuần với 4 SP sẵn sàng, kiểm tra 5 ca đều có người SP | 30 phút |
-| 3 | Test | Generate 2 tuần liên tiếp, kiểm tra NV không bị gán lệch nhau | 15 phút |
-
-**Tổng effort**: ~1 giờ bao gồm test (giảm từ kế hoạch ban đầu).
-
----
-
-### 7.4 Test case cần kiểm tra sau sửa
-
-| Tình huống | Kết quả mong đợi |
-|-----------|-----------------|
-| 4 SP sẵn sàng, 5 ca/tuần, không có xin trực | Ca 1-4: SP tổ; Ca 5: LD backup (Mỹ Linh hoặc Bích Phương) — cảnh báo `leader_sp` |
-| 3 SP sẵn sàng (1 vắng thêm), 5 ca/tuần | Ca 1-3: SP tổ; Ca 4-5: LD backup; Nếu cả 2 LD backup đã trực → Ca 5: LD backup trực lần 2 (cấp 2b) — không rơi vào SP tổ trực 2 lần |
-| 2 SP sẵn sàng, 2 LD backup đều vắng | Ca 1-2: SP tổ; Ca 3-5: rơi vào SP tổ trực 2-3 lần — cảnh báo rõ ràng, không `no_sp` |
-| NV xin trực 2 ca | Ưu tiên trực cả 2 ca, không ảnh hưởng NV khác |
-| Generate lại tuần (overwrite_draft=True) | Draft cũ bị xóa trước, `get_week_assignees()` trả set rỗng, generate sạch từ đầu |
-
----
-
-### 7.5 Vị trí chèn vào Sprint 1
-
-SP-FIX-1 là việc còn lại ưu tiên cao nhất trong Sprint 1 (Sprint 1 phần còn lại đã xong):
-
-```
- 1. backend/services/scheduler_engine.py — SP-FIX-1 (thêm Cấp 2b _pick_sp) ← CÒN LẠI
-    (SP-FIX-2 không cần — get_week_assignees confirmed-only là đúng thiết kế)
-```
+**Tổng ước lượng hoàn thiện**: ~21 ngày dev (1 developer, full-time)

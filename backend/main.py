@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import APP_TITLE, API_PREFIX
-from backend.database import engine, SessionLocal
+from backend.database import engine, SessionLocal, _run_migrations
 from backend.models.duty_models import (   # noqa: F401 — ensure tables registered
     Staff, Absence, DutyRequest, SpecialDay,
     RotationState, DutyShift, DutyShiftNV, ShiftConfig
@@ -25,6 +25,7 @@ from backend.routers import staff, constraints, schedule, stats, export
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────
     Base.metadata.create_all(bind=engine)
+    _run_migrations()   # thêm cột mới vào DB cũ (idempotent)
     db = SessionLocal()
     try:
         startup_init(db)

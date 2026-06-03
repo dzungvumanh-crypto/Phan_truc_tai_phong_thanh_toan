@@ -2,8 +2,8 @@
 week_grid.py — Component lịch tuần dùng chung (B1: DRY refactor).
 
 Dùng trong:
-  - schedule_planner.py: show_warnings=True, on_edit_click=..., on_confirm_click=...
-  - week_view.py: show_warnings=True, on_edit_click=None, on_confirm_click=None
+  - schedule_planner.py: show_warnings=True, on_edit_click=..., on_confirm_click=..., on_unconfirm_click=...
+  - week_view.py: show_warnings=True (read-only)
 """
 from nicegui import ui
 from datetime import timedelta
@@ -26,6 +26,7 @@ def render_week_grid(
     show_warnings: bool = True,
     on_edit_click=None,
     on_confirm_click=None,
+    on_unconfirm_click=None,
 ):
     """
     Render grid 5 cột Mon-Fri từ state["schedule"] và state["current_week_start"].
@@ -37,6 +38,7 @@ def render_week_grid(
     show_warnings: Hiển thị sp_warning badge dưới mỗi shift card.
     on_edit_click: Callback (shift) -> None — hiện nút ✏️ trong compact card.
     on_confirm_click: Callback (shift) -> None — hiện nút ✅ cho ca draft.
+    on_unconfirm_click: Callback (shift) -> None — hiện nút 🔄 cho ca confirmed (B5).
     """
     week_start = state["current_week_start"]
 
@@ -61,6 +63,7 @@ def render_week_grid(
                             shift,
                             on_edit_click=on_edit_click,
                             on_confirm_click=on_confirm_click,
+                            on_unconfirm_click=on_unconfirm_click,
                         )
                         if show_warnings and shift.get("sp_warning"):
                             warn_label, warn_color = common.SP_WARNING_LABELS.get(

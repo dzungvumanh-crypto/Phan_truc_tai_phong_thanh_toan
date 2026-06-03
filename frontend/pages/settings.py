@@ -97,17 +97,23 @@ def settings_page():
 
 def _render_tab_config(state: dict):
     cfg_state = {
-        "year":     state["year"],
-        "nv_count": 1,
+        "year":        state["year"],
+        "nv_count":    1,
+        "signer_name": "",
     }
 
     def load_config():
         cfg = api_client.get_shift_config(cfg_state["year"])
         cfg_state["nv_count"] = cfg.get("nv_count", 1) if cfg else 1
+        cfg_state["signer_name"] = (cfg.get("signer_name") or "") if cfg else ""
         nv_input.set_value(cfg_state["nv_count"])
+        signer_input.set_value(cfg_state["signer_name"])
 
     def save_config():
-        result = api_client.upsert_shift_config(cfg_state["year"], cfg_state["nv_count"])
+        result = api_client.upsert_shift_config(
+            cfg_state["year"], cfg_state["nv_count"],
+            signer_name=cfg_state["signer_name"] or None,
+        )
         if result:
             common.show_notify(
                 f"✅ Đã lưu: năm {cfg_state['year']}, NV/ca = {cfg_state['nv_count']}",
@@ -140,6 +146,14 @@ def _render_tab_config(state: dict):
                 min=1, max=5, step=1,
                 on_change=lambda e: cfg_state.update({"nv_count": int(e.value or 1)})
             ).classes("w-24")
+
+        with ui.column().classes("gap-1"):
+            ui.label("Tên người ký (Excel):").classes("text-body2")
+            signer_input = ui.input(
+                placeholder="Nguyễn Quốc Hùng",
+                value=cfg_state["signer_name"],
+                on_change=lambda e: cfg_state.update({"signer_name": e.value or ""}),
+            ).classes("w-52")
 
         ui.button("💾 Lưu cấu hình", on_click=save_config).props("color=blue-7").classes("mt-5")
 

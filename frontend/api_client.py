@@ -79,7 +79,8 @@ def create_staff(full_name: str, role: str, is_on_project: bool = False,
 
 
 def update_staff(staff_id: int, full_name: str = None, role: str = None,
-                 is_on_project: bool = None, display_order: int = None) -> Optional[dict]:
+                 is_on_project: bool = None, is_sp_backup: int = None,
+                 display_order: int = None) -> Optional[dict]:
     body = {}
     if full_name is not None:
         body["full_name"] = full_name
@@ -87,6 +88,8 @@ def update_staff(staff_id: int, full_name: str = None, role: str = None,
         body["role"] = role
     if is_on_project is not None:
         body["is_on_project"] = is_on_project
+    if is_sp_backup is not None:
+        body["is_sp_backup"] = is_sp_backup
     if display_order is not None:
         body["display_order"] = display_order
     return _put(f"/staff/{staff_id}", json=body)
@@ -205,8 +208,12 @@ def get_shift_config(year: int) -> Optional[dict]:
     return _get(f"/constraints/shift-config/{year}")
 
 
-def upsert_shift_config(year: int, nv_count: int) -> Optional[dict]:
-    return _put(f"/constraints/shift-config/{year}", json={"nv_count": nv_count})
+def upsert_shift_config(year: int, nv_count: int,
+                         signer_name: Optional[str] = None) -> Optional[dict]:
+    body: dict = {"nv_count": nv_count}
+    if signer_name is not None:
+        body["signer_name"] = signer_name
+    return _put(f"/constraints/shift-config/{year}", json=body)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -267,6 +274,11 @@ def update_shift(shift_id: int, leader_id: int = None, sp_id: int = None,
 
 def confirm_shift(shift_id: int) -> Optional[dict]:
     return _put(f"/schedule/{shift_id}/confirm")
+
+
+def unconfirm_shift(shift_id: int) -> Optional[dict]:
+    """B5: Hủy xác nhận ca — trả về trạng thái draft."""
+    return _put(f"/schedule/{shift_id}/unconfirm")
 
 
 def confirm_all_shifts(month: int, year: int) -> Optional[dict]:

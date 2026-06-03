@@ -49,6 +49,7 @@ def update_staff(staff_id: int, body: StaffUpdate, db: Session = Depends(get_db)
         full_name=body.full_name,
         role=body.role,
         is_on_project=body.is_on_project,
+        is_sp_backup=body.is_sp_backup,
         display_order=body.display_order,
     )
     if not s:

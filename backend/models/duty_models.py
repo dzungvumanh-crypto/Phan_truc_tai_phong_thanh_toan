@@ -24,6 +24,7 @@ class Staff(Base):
     full_name     = Column(String(100), nullable=False)
     role          = Column(String(10), nullable=False)   # 'LD' | 'SP' | 'NV'
     is_on_project = Column(Integer, default=0)           # 0/1
+    is_sp_backup  = Column(Integer, default=0)           # T3: 1 = kiêm nhiệm SP khi thiếu
     display_order = Column(Integer, default=0)
     created_at    = Column(String(30), default=lambda: datetime.now().isoformat(timespec="seconds"))
 
@@ -175,6 +176,7 @@ class ShiftConfig(Base):
     """Cấu hình ca trực theo năm."""
     __tablename__ = "shift_config"
 
-    id       = Column(Integer, primary_key=True, index=True)
-    year     = Column(Integer, unique=True, nullable=False)
-    nv_count = Column(Integer, default=1)   # số NV mặc định mỗi ca
+    id           = Column(Integer, primary_key=True, index=True)
+    year         = Column(Integer, unique=True, nullable=False)
+    nv_count     = Column(Integer, default=1)    # số NV mặc định mỗi ca
+    signer_name  = Column(String(100), nullable=True)  # N1: tên người ký file Excel

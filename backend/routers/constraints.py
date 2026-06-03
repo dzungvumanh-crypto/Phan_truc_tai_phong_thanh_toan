@@ -130,7 +130,7 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
     if not staff:
         raise HTTPException(404, "Không tìm thấy nhân sự")
 
-    # N2+V2: Validate absence cho mọi role; validate slot limit chỉ cho NV
+    # N2+V2: Validate absence + slot limit cho mọi role (LD/SP/NV)
     if body.request_type == "once" and body.specific_date:
         allowed, msg, _, _ = constraint_service.validate_nv_request(
             db, body.staff_id, body.specific_date, body.year
@@ -138,10 +138,13 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
         if not allowed:
             raise HTTPException(400, msg)
 
-    obj = constraint_service.create_request(
-        db, body.staff_id, body.request_type, body.year,
-        specific_date=body.specific_date, day_of_week=body.day_of_week,
-    )
+    try:
+        obj = constraint_service.create_request(
+            db, body.staff_id, body.request_type, body.year,
+            specific_date=body.specific_date, day_of_week=body.day_of_week,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return RequestOut(
         id=obj.id, staff_id=obj.staff_id,
         staff_name=staff.full_name,
@@ -240,11 +243,15 @@ def get_shift_config(year: int, db: Session = Depends(get_db)):
     obj = constraint_service.get_shift_config(db, year)
     if not obj:
         raise HTTPException(404, f"Chưa có cấu hình ca năm {year}")
-    return ShiftConfigOut(year=obj.year, nv_count=obj.nv_count)
+    return ShiftConfigOut(year=obj.year, nv_count=obj.nv_count,
+                          signer_name=obj.signer_name)
 
 
 @router.put("/shift-config/{year}", response_model=ShiftConfigOut)
 def upsert_shift_config(year: int, body: ShiftConfigUpsert,
                          db: Session = Depends(get_db)):
-    obj = constraint_service.upsert_shift_config(db, year, body.nv_count)
-    return ShiftConfigOut(year=obj.year, nv_count=obj.nv_count)
+    obj = constraint_service.upsert_shift_config(
+        db, year, body.nv_count, signer_name=body.signer_name
+    )
+    return ShiftConfigOut(year=obj.year, nv_count=obj.nv_count,
+                          signer_name=obj.signer_name)

@@ -69,6 +69,7 @@ def create_staff(db: Session, full_name: str, role: str,
 
 def update_staff(db: Session, staff_id: int, full_name: Optional[str] = None,
                  role: Optional[str] = None, is_on_project: Optional[bool] = None,
+                 is_sp_backup: Optional[int] = None,
                  display_order: Optional[int] = None) -> Optional[Staff]:
     s = get_staff_by_id(db, staff_id)
     if not s:
@@ -98,6 +99,8 @@ def update_staff(db: Session, staff_id: int, full_name: Optional[str] = None,
         s.role = role
     if is_on_project is not None:
         s.is_on_project = 1 if is_on_project else 0
+    if is_sp_backup is not None:   # T3
+        s.is_sp_backup = is_sp_backup
     if display_order is not None:
         s.display_order = display_order
     db.commit()

@@ -76,10 +76,11 @@ def roster_list_page():
         with table_container:
             # Header
             with ui.row().classes("w-full border-b-2 border-blue-8 mb-2 px-4"):
-                ui.label("Tên").classes("text-body2 font-bold w-[35%]")
-                ui.label("Vai trò").classes("text-body2 font-bold w-[18%]")
-                ui.label("Số ca").classes("text-body2 font-bold w-[12%] text-center")
+                ui.label("Tên").classes("text-body2 font-bold w-[30%]")
+                ui.label("Vai trò").classes("text-body2 font-bold w-[15%]")
+                ui.label("Số ca").classes("text-body2 font-bold w-[10%] text-center")
                 ui.label("Dự án").classes("text-body2 font-bold w-[12%] text-center")
+                ui.label("SP Bckp").classes("text-body2 font-bold w-[12%] text-center")
                 ui.label("Thao tác").classes("text-body2 font-bold flex-1 text-right pr-2")
 
             filtered = [
@@ -92,27 +93,43 @@ def roster_list_page():
                 full_name = staff.get("full_name", "—")
                 role = staff.get("role", "")
                 is_on_project = staff.get("is_on_project", 0)
+                is_sp_backup = staff.get("is_sp_backup", 0)
                 shift_count = state["staff_shifts"].get(sid, 0)
 
                 with ui.row().classes(
                     "w-full border-b border-grey-2 px-4 py-2 items-center hover:bg-blue-1"
                 ):
-                    ui.label(full_name).classes("w-[35%] text-body1")
+                    ui.label(full_name).classes("w-[30%] text-body1")
 
-                    with ui.column().classes("w-[18%]"):
+                    with ui.column().classes("w-[15%]"):
                         role_label = common.ROLE_LABELS.get(role, role)
                         color = common.ROLE_COLORS.get(role, "grey")
                         ui.badge(role_label, color=color).classes("text-xs")
+                        # T3: badge SP Backup chỉ hiện với LD
+                        if role == "LD" and is_sp_backup:
+                            ui.badge("SP Backup", color="purple").classes("text-xs mt-1")
 
                     ui.label(str(shift_count)).classes(
-                        "w-[12%] text-center text-body2 font-bold"
+                        "w-[10%] text-center text-body2 font-bold"
                     )
 
                     with ui.column().classes("w-[12%] items-center"):
                         ui.checkbox(
                             value=bool(is_on_project),
                             on_change=lambda _e, s=sid: _toggle_project(s, state, render_table),
-                        ).props("dense")
+                        ).props("dense").tooltip("Đi dự án")
+
+                    # T3: Toggle SP Backup — chỉ hiện với LD
+                    with ui.column().classes("w-[12%] items-center"):
+                        if role == "LD":
+                            ui.checkbox(
+                                value=bool(is_sp_backup),
+                                on_change=lambda _e, s=sid, v=is_sp_backup: _toggle_sp_backup(
+                                    s, not bool(v), state, render_table
+                                ),
+                            ).props("dense color=purple").tooltip("Kiêm nhiệm SP Backup")
+                        else:
+                            ui.label("—").classes("text-grey-4 text-xs")
 
                     with ui.row().classes("flex-1 justify-end gap-1"):
                         ui.button(
@@ -125,6 +142,23 @@ def roster_list_page():
                         ).props("flat dense size=sm color=red-7")
 
     render_table()
+
+
+def _toggle_sp_backup(staff_id: int, new_value: bool, state: dict, render_callback):
+    """T3: Toggle is_sp_backup cho LD."""
+    result = api_client.update_staff(staff_id=staff_id, is_sp_backup=1 if new_value else 0)
+    if result:
+        common.show_notify(
+            "Đã bật SP Backup" if new_value else "Đã tắt SP Backup",
+            type="positive"
+        )
+        for s in state["staff"]:
+            if s.get("id") == staff_id:
+                s["is_sp_backup"] = 1 if new_value else 0
+                break
+        render_callback()
+    else:
+        common.show_notify("Cập nhật thất bại", type="negative")
 
 
 def _toggle_project(staff_id: int, state: dict, render_callback):
@@ -191,6 +225,10 @@ def _open_edit_dialog(staff: dict, state: dict, render_callback):
             value=staff.get("role", "NV"),
         ).classes("w-full")
         project_check = ui.checkbox("Đi dự án", value=bool(staff.get("is_on_project", 0)))
+        sp_backup_check = ui.checkbox(
+            "Kiêm nhiệm SP Backup (chỉ áp dụng cho LĐ)",
+            value=bool(staff.get("is_sp_backup", 0))
+        )
         order_input = ui.number(
             "Thứ tự hiển thị", value=staff.get("display_order", 99), min=1, max=999
         ).classes("w-full")
@@ -208,6 +246,7 @@ def _open_edit_dialog(staff: dict, state: dict, render_callback):
                     full_name=full_name,
                     role=role_select.value,
                     is_on_project=bool(project_check.value),
+                    is_sp_backup=1 if bool(sp_backup_check.value) else 0,
                     display_order=int(order_input.value or 99),
                 )
                 if result:

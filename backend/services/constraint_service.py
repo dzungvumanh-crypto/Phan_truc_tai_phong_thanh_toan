@@ -210,6 +210,13 @@ def create_request(db: Session, staff_id: int, request_type: str,
     if existing:
         return existing
 
+    # N7: Từ chối đăng ký T7/CN (ngày không bao giờ có ca)
+    if request_type == "once" and specific_date:
+        from datetime import date as _date
+        d = _date.fromisoformat(specific_date)
+        if d.weekday() >= 5:
+            raise ValueError(f"Không thể đăng ký cuối tuần ({specific_date})")
+
     obj = DutyRequest(
         staff_id=staff_id,
         request_type=request_type,
@@ -343,12 +350,15 @@ def get_shift_config(db: Session, year: int) -> Optional[ShiftConfig]:
     return db.query(ShiftConfig).filter_by(year=year).first()
 
 
-def upsert_shift_config(db: Session, year: int, nv_count: int) -> ShiftConfig:
+def upsert_shift_config(db: Session, year: int, nv_count: int,
+                         signer_name: Optional[str] = None) -> ShiftConfig:
     obj = db.query(ShiftConfig).filter_by(year=year).first()
     if obj:
         obj.nv_count = nv_count
+        if signer_name is not None:
+            obj.signer_name = signer_name
     else:
-        obj = ShiftConfig(year=year, nv_count=nv_count)
+        obj = ShiftConfig(year=year, nv_count=nv_count, signer_name=signer_name)
         db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -372,11 +382,13 @@ def get_week_assignees(db: Session, date_str: str) -> set:
     if week_start >= d:
         return set()
 
-    # V4 (Q2=Không): chỉ đếm confirmed — draft chưa xác nhận không cản generate lại
+    # SP-FIX-2: đọc cả draft + confirmed để tránh phân trùng khi generate tuần mới.
+    # Khi overwrite_draft=True: draft cũ đã bị xóa trước khi gọi hàm này → an toàn.
+    # Khi generate tuần mới: ca draft T2 phải "chặn" T3 khỏi chọn lại cùng người.
     shifts = db.query(DutyShift).filter(
         DutyShift.shift_date >= week_start.isoformat(),
         DutyShift.shift_date < date_str,
-        DutyShift.status == "confirmed",
+        DutyShift.status.in_(["confirmed", "draft"]),
     ).all()
 
     ids: set = set()

@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import DATABASE_URL
 
@@ -26,6 +26,21 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # ── Base ──────────────────────────────────────────────────────────────────────
 class Base(DeclarativeBase):
     pass
+
+# ── Migrations: thêm cột mới vào bảng cũ (safe, idempotent) ──────────────────
+def _run_migrations():
+    _migrations = [
+        "ALTER TABLE staff ADD COLUMN is_sp_backup INTEGER DEFAULT 0",   # T3
+        "ALTER TABLE shift_config ADD COLUMN signer_name TEXT",           # N1
+    ]
+    with engine.connect() as conn:
+        for stmt in _migrations:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # column đã tồn tại
+
 
 # ── Dependency ────────────────────────────────────────────────────────────────
 def get_db():

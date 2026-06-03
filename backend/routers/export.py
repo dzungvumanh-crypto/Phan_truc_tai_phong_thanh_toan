@@ -6,7 +6,8 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.services import schedule_service, export_service
+from backend.config import CURRENT_YEAR
+from backend.services import schedule_service, export_service, constraint_service
 
 router = APIRouter(prefix="/export", tags=["Export"])
 
@@ -24,7 +25,11 @@ def export_week_schedule(
     end: date = start + timedelta(days=4)   # thứ 6
 
     shifts = schedule_service.get_shifts_for_week(db, week_start)
-    excel_bytes = export_service.build_week_excel(shifts, start, end)
+    # N1: lấy tên người ký từ shift_config
+    year = start.year
+    cfg = constraint_service.get_shift_config(db, year)
+    signer = (cfg.signer_name if cfg and cfg.signer_name else "Nguyễn Quốc Hùng")
+    excel_bytes = export_service.build_week_excel(shifts, start, end, signer_name=signer)
 
     filename = f"lich_truc_{start:%d%m%Y}_{end:%d%m%Y}.xlsx"
     return Response(

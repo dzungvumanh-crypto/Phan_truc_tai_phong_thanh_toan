@@ -25,6 +25,7 @@ class StaffOut(BaseModel):
     full_name: str
     role: str
     is_on_project: bool
+    is_sp_backup: int = 0   # T3: 1 = kiêm nhiệm SP khi thiếu
     display_order: int
 
     model_config = {"from_attributes": True}
@@ -53,6 +54,7 @@ class StaffUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[Literal["LD", "SP", "NV"]] = None
     is_on_project: Optional[bool] = None
+    is_sp_backup: Optional[int] = None   # T3
     display_order: Optional[int] = None
 
     @field_validator("full_name")
@@ -198,12 +200,14 @@ class ComputeCutoffRequest(BaseModel):
 class ShiftConfigOut(BaseModel):
     year: int
     nv_count: int
+    signer_name: Optional[str] = None  # N1: tên người ký file Excel
 
     model_config = {"from_attributes": True}
 
 
 class ShiftConfigUpsert(BaseModel):
     nv_count: int = Field(..., ge=1, le=5)
+    signer_name: Optional[str] = None  # N1
 
 
 # ══════════════════════════════════════════════════════════════

@@ -71,6 +71,11 @@ def schedule_planner_page():
             ).props("color=blue-7")
 
             ui.button(
+                "📅 Phân cả tháng",
+                on_click=lambda: _generate_month(state),
+            ).props("color=purple-7")
+
+            ui.button(
                 "✅ Xác nhận tuần",
                 on_click=lambda: _confirm_week(state),
             ).props("color=green-7")
@@ -97,6 +102,7 @@ def schedule_planner_page():
                 state,
                 on_edit_click=lambda s: _open_edit_dialog(s, state),
                 on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
+                on_unconfirm_click=lambda s: _unconfirm_single_shift(s["id"], state),
             )
 
     # ── refresh_week defined after week_container and week_label exist ────
@@ -112,6 +118,7 @@ def schedule_planner_page():
                 state,
                 on_edit_click=lambda s: _open_edit_dialog(s, state),
                 on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
+                on_unconfirm_click=lambda s: _unconfirm_single_shift(s["id"], state),
             )
 
     state["refresh"] = refresh_week
@@ -317,6 +324,86 @@ def _confirm_single_shift(shift_id: int, state: dict):
             state["refresh"]()
     else:
         common.show_notify("Lỗi xác nhận ca", type="negative")
+
+
+def _unconfirm_single_shift(shift_id: int, state: dict):
+    """B5: Hủy xác nhận 1 ca trực — trả về trạng thái draft."""
+    def do_unconfirm():
+        result = api_client.unconfirm_shift(shift_id)
+        if result:
+            common.show_notify("Đã hủy xác nhận ca", type="warning")
+            if state.get("refresh"):
+                state["refresh"]()
+        else:
+            common.show_notify("Lỗi hủy xác nhận ca", type="negative")
+
+    common.confirm_dialog(
+        "Hủy xác nhận ca này? Ca sẽ trở về trạng thái Nháp.",
+        on_confirm=do_unconfirm,
+        confirm_label="Hủy xác nhận",
+        confirm_color="orange",
+    )
+
+
+def _generate_month(state: dict):
+    """P3: Dialog phân lịch cả tháng."""
+    cur = state["current_week_start"]
+    gen_state = {
+        "month": cur.month,
+        "year": cur.year,
+        "overwrite_draft": False,
+    }
+
+    with ui.dialog() as dlg, ui.card().classes("p-6 min-w-96"):
+        ui.label("📅 Phân lịch cả tháng").classes("text-lg font-bold text-purple-7 mb-4")
+
+        with ui.row().classes("gap-4 items-end mb-3"):
+            with ui.column().classes("gap-1"):
+                ui.label("Tháng:").classes("text-caption")
+                ui.number(value=gen_state["month"], min=1, max=12, step=1,
+                          on_change=lambda e: gen_state.update({"month": int(e.value)}),
+                ).classes("w-24")
+            with ui.column().classes("gap-1"):
+                ui.label("Năm:").classes("text-caption")
+                ui.number(value=gen_state["year"], min=2024, max=2030, step=1,
+                          on_change=lambda e: gen_state.update({"year": int(e.value)}),
+                ).classes("w-28")
+
+        ui.checkbox(
+            "Ghi đè ca nháp (giữ nguyên ca đã xác nhận)",
+            value=False,
+            on_change=lambda e: gen_state.update({"overwrite_draft": e.value}),
+        ).classes("mb-2")
+
+        result_label = ui.label("").classes("text-body2 text-green-7")
+
+        def do_gen():
+            result_label.set_text("Đang phân lịch...")
+            result = api_client.generate_schedule(
+                gen_state["month"], gen_state["year"],
+                overwrite_draft=gen_state["overwrite_draft"],
+            )
+            if result:
+                created = result.get("created", 0)
+                skipped = result.get("skipped", 0)
+                result_label.set_text(
+                    f"✅ Hoàn thành: {created} ca mới, {skipped} ca bỏ qua"
+                )
+                common.show_notify(
+                    f"Phân tháng {gen_state['month']}/{gen_state['year']}: {created} ca",
+                    type="positive",
+                )
+                if state.get("refresh"):
+                    state["refresh"]()
+            else:
+                result_label.set_text("❌ Có lỗi xảy ra")
+                common.show_notify("Lỗi phân lịch tháng", type="negative")
+
+        with ui.row().classes("justify-end gap-2 mt-4"):
+            ui.button("Hủy", on_click=dlg.close).props("flat")
+            ui.button("▶ Phân lịch", on_click=do_gen).props("color=purple-7")
+
+    dlg.open()
 
 
 def _show_warnings_dialog(warnings: list):

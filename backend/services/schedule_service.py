@@ -88,12 +88,20 @@ def startup_init(db: Session) -> None:
     2. Seed shift_config năm hiện tại
     3. Seed ngày nghỉ lễ
     4. Init rotation state
+    5. Seed is_sp_backup cho LD backup (T3)
     """
+    from backend.config import SP_BACKUP_LEADERS
     year = CURRENT_YEAR
     seed_staff(db)
     upsert_shift_config(db, year, DEFAULT_NV_COUNT)
     seed_holidays(db, year)
     init_rotation_for_year(db, year)
+    # T3: Đảm bảo LD backup có is_sp_backup=1 (idempotent)
+    for name in SP_BACKUP_LEADERS:
+        s = db.query(Staff).filter_by(full_name=name).first()
+        if s and not s.is_sp_backup:
+            s.is_sp_backup = 1
+    db.commit()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -202,6 +210,17 @@ def confirm_shift(db: Session, shift_id: int) -> Optional[dict]:
     if not shift:
         return None
     shift.status = "confirmed"
+    db.commit()
+    db.refresh(shift)
+    return _enrich_shift(db, shift)
+
+
+def unconfirm_shift(db: Session, shift_id: int) -> Optional[dict]:
+    """B5: Hủy xác nhận ca — trả về trạng thái draft."""
+    shift = db.query(DutyShift).filter_by(id=shift_id).first()
+    if not shift:
+        return None
+    shift.status = "draft"
     db.commit()
     db.refresh(shift)
     return _enrich_shift(db, shift)

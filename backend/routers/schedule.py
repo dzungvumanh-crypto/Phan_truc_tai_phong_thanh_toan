@@ -99,6 +99,15 @@ def confirm_shift(shift_id: int, db: Session = Depends(get_db)):
     return result
 
 
+@router.put("/{shift_id}/unconfirm", response_model=dict)
+def unconfirm_shift(shift_id: int, db: Session = Depends(get_db)):
+    """B5: Hủy xác nhận ca — trả về trạng thái draft."""
+    result = schedule_service.unconfirm_shift(db, shift_id)
+    if not result:
+        raise HTTPException(404, "Không tìm thấy ca trực")
+    return result
+
+
 @router.post("/confirm-all", response_model=MessageOut)
 def confirm_all(
     month: int = Query(..., ge=1, le=12),

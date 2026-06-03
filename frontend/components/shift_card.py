@@ -97,12 +97,14 @@ def render_shift_card(shift: dict, on_edit_click=None):
                 ).props("size=xs flat dense color=blue-7")
 
 
-def render_shift_card_compact(shift: dict, on_edit_click=None, on_confirm_click=None):
+def render_shift_card_compact(shift: dict, on_edit_click=None,
+                              on_confirm_click=None, on_unconfirm_click=None):
     """
     Render compact version cho calendar/tuần view.
     Hiển thị tên LĐ, SP và danh sách tên NV.
     A4: on_edit_click — callback khi click nút ✏️ Sửa
     B6: on_confirm_click — callback khi click nút ✅ (chỉ hiện khi ca ở trạng thái draft)
+    B5: on_unconfirm_click — callback khi click nút 🔄 (chỉ hiện khi ca ở trạng thái confirmed)
     """
     leader = shift.get("leader") or {}
     sp = shift.get("sp") or {}
@@ -128,14 +130,24 @@ def render_shift_card_compact(shift: dict, on_edit_click=None, on_confirm_click=
         ui.label(sp_name).classes("text-xs text-purple-7")
         ui.label(nv_text).classes("text-xs text-green-8")
 
-        # A4 + B6: Nút hành động compact
-        if on_edit_click or (on_confirm_click and shift.get("status") == "draft"):
+        # A4 + B6 + B5: Nút hành động compact
+        has_action = (
+            on_edit_click
+            or (on_confirm_click and shift.get("status") == "draft")
+            or (on_unconfirm_click and shift.get("status") == "confirmed")
+        )
+        if has_action:
             with ui.row().classes("gap-1 mt-1"):
                 if on_confirm_click and shift.get("status") == "draft":
                     ui.button(
                         "✅",
                         on_click=lambda s=shift: on_confirm_click(s),
                     ).props("size=xs flat dense color=green-7").tooltip("Xác nhận ca này")
+                if on_unconfirm_click and shift.get("status") == "confirmed":
+                    ui.button(
+                        "🔄",
+                        on_click=lambda s=shift: on_unconfirm_click(s),
+                    ).props("size=xs flat dense color=orange-7").tooltip("Huỷ xác nhận ca này")
                 if on_edit_click:
                     ui.button(
                         "✏️",

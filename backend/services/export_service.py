@@ -64,10 +64,20 @@ def _apply_row(ws, row: int, values: list, bold=False, fill_hex=None,
             cell.border = BORDER_ALL
 
 
-def build_week_excel(shifts: list, week_start: date, week_end: date) -> bytes:
+_SHIFT_TYPE_SUFFIX = {   # N8: label ngày đặc biệt trong cột THỨ
+    "cutoff":           " (C/O)",
+    "friday":           " (T6)",
+    "settlement_main":  " (QT)",
+    "settlement_sub":   " (QT-P)",
+}
+
+
+def build_week_excel(shifts: list, week_start: date, week_end: date,
+                     signer_name: str = "Nguyễn Quốc Hùng") -> bytes:
     """
     Tạo file .xlsx cho 1 tuần — khổ A4 ngang.
     shifts: list shift dict (từ schedule_service.get_shifts_for_week / _enrich_shift)
+    signer_name: N1 — tên người ký từ shift_config (fallback hard-code)
     Trả về bytes.
     """
     wb = Workbook()
@@ -145,7 +155,11 @@ def build_week_excel(shifts: list, week_start: date, week_end: date) -> bytes:
         date_str = current.strftime("%Y-%m-%d")
         day_shifts = shift_by_date.get(date_str, [])
 
-        thu_label = WEEKDAY_VI.get(wd, "")
+        base_thu = WEEKDAY_VI.get(wd, "")
+        # N8: thêm suffix loại ca đặc biệt vào cột THỨ
+        shift_type_day = (day_shifts[0].get("shift_type", "normal")
+                          if day_shifts else "normal")
+        thu_label = base_thu + _SHIFT_TYPE_SUFFIX.get(shift_type_day, "")
         date_label = current.strftime("%d/%m/%Y")
 
         main_shift = next((s for s in day_shifts
@@ -285,7 +299,7 @@ def build_week_excel(shifts: list, week_start: date, week_end: date) -> bytes:
         note_row += 5
 
     # Chữ ký
-    ws.cell(row=note_row, column=5).value = "Nguyễn Quốc Hùng"
+    ws.cell(row=note_row, column=5).value = signer_name  # N1: từ shift_config
     ws.cell(row=note_row, column=5).font = _font(size=11)
     ws.cell(row=note_row, column=5).alignment = _align(h="center")
 
