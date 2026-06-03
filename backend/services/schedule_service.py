@@ -168,14 +168,18 @@ def delete_shifts_for_week(db: Session, week_start_str: str) -> int:
 
 def update_shift(db: Session, shift_id: int, leader_id: Optional[int],
                  sp_id: Optional[int], nv_ids: List[int],
-                 sp_warning: Optional[str] = None) -> Optional[dict]:
+                 sp_warning: Optional[str] = None,
+                 clear_sp: bool = False) -> Optional[dict]:
     shift = db.query(DutyShift).filter_by(id=shift_id).first()
     if not shift:
         return None
 
     if leader_id is not None:
         shift.leader_id = leader_id
-    if sp_id is not None:
+    # V1: clear_sp=True xóa SP về NULL; sp_id=None riêng không đủ để phân biệt "không truyền" vs "xóa"
+    if clear_sp:
+        shift.sp_id = None
+    elif sp_id is not None:
         shift.sp_id = sp_id
     if sp_warning is not None:
         shift.sp_warning = sp_warning
@@ -309,8 +313,10 @@ def get_shift_count_by_person(db: Session, year: int) -> List[dict]:
 
 def get_monthly_summary(db: Session, month: int, year: int) -> dict:
     prefix = f"{year}-{month:02d}"
+    # FIX-1: Chỉ đếm ca confirmed để nhất quán với get_shift_count_by_person
     shifts = db.query(DutyShift).filter(
         DutyShift.shift_date.like(f"{prefix}%"),
+        DutyShift.status == "confirmed",
     ).all()
 
     by_type: dict = {}

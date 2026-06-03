@@ -140,6 +140,7 @@ def statistics_page():
     def render_section1(s: dict):
         section1_container.clear()
         with section1_container:
+            _render_shift_count_chart(s)
             _render_shift_count_table(s)
 
     def render_section2(s: dict):
@@ -159,6 +160,40 @@ def statistics_page():
 
 
 # ── Section 1 helpers ──────────────────────────────────────────────────────────
+
+# Màu theo role cho bar chart
+_ROLE_COLORS_CHART = {"LD": "#1976D2", "SP": "#7B1FA2", "NV": "#388E3C"}
+
+
+def _render_shift_count_chart(state: dict):
+    """B4: Biểu đồ bar chart ngang — so sánh số ca từng người."""
+    data = [d for d in state.get("shift_counts", []) if d.get("total", 0) > 0]
+    if not data:
+        return
+
+    data.sort(key=lambda x: (_ROLE_ORDER.get(x.get("role"), 99), -x.get("total", 0)))
+    avg = sum(d["total"] for d in data) / len(data)
+    names = [d["full_name"] for d in data]
+    totals = [d["total"] for d in data]
+    colors = [_ROLE_COLORS_CHART.get(d.get("role"), "#9E9E9E") for d in data]
+
+    opt = {
+        "grid": {"left": "180px", "right": "60px", "top": "20px", "bottom": "30px"},
+        "xAxis": {"type": "value", "name": "Số ca"},
+        "yAxis": {"type": "category", "data": names, "axisLabel": {"fontSize": 11}},
+        "series": [{
+            "type": "bar",
+            "data": [{"value": v, "itemStyle": {"color": c}} for v, c in zip(totals, colors)],
+            "markLine": {
+                "data": [{"xAxis": round(avg, 1), "name": f"TB: {avg:.1f}"}],
+                "label": {"formatter": f"TB: {avg:.1f}"},
+            },
+            "label": {"show": True, "position": "right", "fontSize": 11},
+        }],
+        "tooltip": {"trigger": "axis"},
+    }
+    ui.echart(opt).classes("w-full").style("height: 400px")
+
 
 def _render_shift_count_table(state: dict):
     """Bảng số ca từng người, nhóm theo role."""

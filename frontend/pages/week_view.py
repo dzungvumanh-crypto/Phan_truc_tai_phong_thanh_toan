@@ -14,7 +14,7 @@ from nicegui import ui
 from datetime import datetime, timedelta
 from frontend import api_client
 from frontend.components import common
-from frontend.components.shift_card import render_shift_card_compact, render_empty_day_card
+from frontend.components.week_grid import render_week_grid
 
 
 def week_view_page():
@@ -24,6 +24,10 @@ def week_view_page():
     state = {
         "current_week_start": _get_monday_of_week(datetime.now()),
         "schedule": [],
+        "holiday_map": {
+            h["date"]: (h.get("label") or "Ngày lễ")
+            for h in (api_client.get_special_days(day_type="holiday") or [])
+        },
     }
 
     def load_week_schedule():
@@ -110,37 +114,4 @@ def _today_week(state: dict):
     state["current_week_start"] = _get_monday_of_week(datetime.now())
 
 
-def render_week_grid(state: dict):
-    """Render 5-column grid: Mon-Fri."""
-    weekdays = [
-        ("Thứ 2 (T2)", 0),
-        ("Thứ 3 (T3)", 1),
-        ("Thứ 4 (T4)", 2),
-        ("Thứ 5 (T5)", 3),
-        ("Thứ 6 (T6)", 4),
-    ]
-
-    # ── Header row ────
-    with ui.row().classes("w-full border-b-2 border-blue-8 gap-2 mb-4"):
-        for day_label, _ in weekdays:
-            ui.label(day_label).classes("text-h6 text-center font-bold flex-1")
-
-    # ── Data rows ────
-    with ui.row().classes("w-full gap-2"):
-        for day_label, day_offset in weekdays:
-            date = state["current_week_start"] + timedelta(days=day_offset)
-            date_str = date.strftime("%Y-%m-%d")
-
-            # Get shifts for this date
-            shifts = [s for s in state["schedule"] if s.get("shift_date") == date_str]
-
-            with ui.column().classes("flex-1 border border-grey-3 p-3 rounded-md bg-white"):
-                # ── Date & day number ────
-                ui.label(f"{date.strftime('%d/%m')}").classes("text-h6 text-blue-8 font-bold")
-
-                # ── Shifts ────
-                if shifts:
-                    for shift in shifts:
-                        render_shift_card_compact(shift)
-                else:
-                    render_empty_day_card()
+# render_week_grid đã được tách sang frontend/components/week_grid.py (B1 DRY refactor)

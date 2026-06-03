@@ -39,9 +39,12 @@ def _get_rotation_state(db: Session, staff_id: int, year: int, role: str) -> Rot
         year=year, role=role, staff_id=staff_id
     ).first()
     if not obj:
+        # P2: Dùng display_order*10+id như init_rotation_for_year, không dùng staff_id trực tiếp
+        staff_obj = db.query(Staff).filter_by(id=staff_id).first()
+        pos = (staff_obj.display_order * 10 + staff_id) if staff_obj else staff_id
         obj = RotationState(
             year=year, role=role, staff_id=staff_id,
-            shift_count=0, last_used=None, position=staff_id,
+            shift_count=0, last_used=None, position=pos,
         )
         db.add(obj)
         db.flush()
@@ -463,17 +466,38 @@ def generate_schedule_for_week(db: Session, week_start_str: str,
     for date_str in working_days:
         existing = db.query(DutyShift).filter(DutyShift.shift_date == date_str).all()
 
+        # R3: Tách confirmed / draft để xử lý độc lập
+        confirmed_shifts = [s for s in existing if s.status == "confirmed"]
+        draft_shifts = [s for s in existing if s.status == "draft"]
+        confirmed_types = {s.shift_type for s in confirmed_shifts}
+
         if existing:
-            has_confirmed = any(s.status == "confirmed" for s in existing)
-            if has_confirmed and not overwrite_confirmed:
+            if confirmed_shifts and not overwrite_confirmed:
+                if draft_shifts and overwrite_draft:
+                    # Xóa chỉ draft — giữ nguyên confirmed
+                    for s in draft_shifts:
+                        db.delete(s)
+                    db.flush()
+                    # Tiếp tục generate nhưng skip các shift_type đã confirmed
+                elif draft_shifts:
+                    skipped += len(existing)
+                    continue
+                else:
+                    # Chỉ có confirmed, không có draft
+                    skipped += len(confirmed_shifts)
+                    continue
+            elif not overwrite_draft:
                 skipped += len(existing)
                 continue
-            if not has_confirmed and not overwrite_draft:
-                skipped += len(existing)
-                continue
-            for s in existing:
-                db.delete(s)
-            db.flush()
+            else:
+                # overwrite_draft=True và không có confirmed bị bảo vệ
+                for s in existing:
+                    if not overwrite_confirmed and s.status == "confirmed":
+                        continue
+                    db.delete(s)
+                if overwrite_confirmed:
+                    confirmed_types = set()
+                db.flush()
 
         sd = get_special_day(db, date_str)
         day_type = sd.day_type if sd else None
@@ -494,8 +518,12 @@ def generate_schedule_for_week(db: Session, week_start_str: str,
             )
 
         for shift_data in shifts:
-            _save_shift(db, shift_data)
-            created += 1
+            # R3: Không ghi đè shift_type đã confirmed
+            if shift_data["shift_type"] in confirmed_types:
+                skipped += 1
+            else:
+                _save_shift(db, shift_data)
+                created += 1
 
         all_warnings.extend(warns)
 

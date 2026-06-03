@@ -59,6 +59,21 @@ def create_absence_range(db: Session, staff_id: int,
     return {"created": created, "skipped": skipped}
 
 
+def delete_absence_range(db: Session, staff_id: int,
+                         from_date: str, to_date: str) -> dict:
+    """N6: Xóa tất cả absence records trong khoảng from_date..to_date (inclusive)."""
+    rows = db.query(Absence).filter(
+        Absence.staff_id == staff_id,
+        Absence.absence_date >= from_date,
+        Absence.absence_date <= to_date,
+    ).all()
+    count = len(rows)
+    for r in rows:
+        db.delete(r)
+    db.commit()
+    return {"deleted": count}
+
+
 def delete_absence(db: Session, absence_id: int) -> bool:
     obj = db.query(Absence).filter_by(id=absence_id).first()
     if not obj:
@@ -143,10 +158,17 @@ def count_nv_requests_for_date(db: Session, date_str: str, year: int) -> int:
 def validate_nv_request(db: Session, staff_id: int, date_str: str,
                          year: int) -> tuple[bool, str, int, int]:
     """
-    Kiểm tra xem có thể đăng ký xin trực NV ngày date_str không.
-    Giới hạn: số đăng ký NV ≤ nv_count của ca ngày đó.
+    Kiểm tra xem có thể đăng ký xin trực ngày date_str không.
+    Áp dụng cho mọi role: kiểm tra vắng mặt trước.
+    Giới hạn slot chỉ áp dụng cho NV: số đăng ký NV ≤ nv_count.
     Trả (allowed, message, current_count, max_slots).
     """
+    # V2: Kiểm tra vắng mặt trước — áp dụng cho mọi role
+    from backend.services.staff_service import get_absent_staff_ids
+    absent_ids = get_absent_staff_ids(db, date_str)
+    if staff_id in absent_ids:
+        return False, f"Nhân sự đã khai báo vắng ngày {date_str}", 0, 0
+
     config = get_shift_config(db, year)
     max_slots = config.nv_count if config else DEFAULT_NV_COUNT
 
@@ -176,6 +198,18 @@ def validate_nv_request(db: Session, staff_id: int, date_str: str,
 def create_request(db: Session, staff_id: int, request_type: str,
                    year: int, specific_date: Optional[str] = None,
                    day_of_week: Optional[int] = None) -> DutyRequest:
+    # N3: Idempotent — tránh tạo bản ghi trùng khi bấm 2 lần
+    existing = db.query(DutyRequest).filter_by(
+        staff_id=staff_id,
+        request_type=request_type,
+        specific_date=specific_date,
+        day_of_week=day_of_week,
+        year=year,
+        is_active=1,
+    ).first()
+    if existing:
+        return existing
+
     obj = DutyRequest(
         staff_id=staff_id,
         request_type=request_type,
@@ -261,13 +295,32 @@ def confirm_special_day(db: Session, special_day_id: int) -> Optional[SpecialDay
     return obj
 
 
-def delete_special_day(db: Session, special_day_id: int) -> bool:
+def delete_special_day(db: Session, special_day_id: int) -> dict:
+    """
+    Xóa ngày đặc biệt. Q6=Option C: cho phép xóa tự do.
+    Trả {"deleted": bool, "warning": str|None}.
+    Warning nếu ngày đó đang có ca đã confirmed.
+    """
     obj = db.query(SpecialDay).filter_by(id=special_day_id).first()
     if not obj:
-        return False
+        return {"deleted": False, "warning": None}
+
+    from backend.models.duty_models import DutyShift
+    confirmed_count = db.query(DutyShift).filter(
+        DutyShift.shift_date == obj.date,
+        DutyShift.status == "confirmed",
+    ).count()
+
+    warning = None
+    if confirmed_count > 0:
+        warning = (
+            f"Ngày {obj.date} đang có {confirmed_count} ca đã xác nhận. "
+            "Ca đó vẫn được giữ nguyên sau khi xóa ngày đặc biệt."
+        )
+
     db.delete(obj)
     db.commit()
-    return True
+    return {"deleted": True, "warning": warning}
 
 
 def upsert_special_days_bulk(db: Session, days: List[dict]) -> List[SpecialDay]:
@@ -319,9 +372,11 @@ def get_week_assignees(db: Session, date_str: str) -> set:
     if week_start >= d:
         return set()
 
+    # V4 (Q2=Không): chỉ đếm confirmed — draft chưa xác nhận không cản generate lại
     shifts = db.query(DutyShift).filter(
         DutyShift.shift_date >= week_start.isoformat(),
         DutyShift.shift_date < date_str,
+        DutyShift.status == "confirmed",
     ).all()
 
     ids: set = set()

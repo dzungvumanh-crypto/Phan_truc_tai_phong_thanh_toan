@@ -43,9 +43,9 @@ def _put(path: str, json: dict = None, params: dict = None) -> Optional[dict]:
         return None
 
 
-def _delete(path: str) -> bool:
+def _delete(path: str, params: dict = None) -> bool:
     try:
-        r = httpx.delete(f"{BASE_URL}{path}", timeout=_TIMEOUT, follow_redirects=True)
+        r = httpx.delete(f"{BASE_URL}{path}", params=params, timeout=_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
         return True
     except Exception as e:
@@ -122,6 +122,12 @@ def create_absence_range(staff_id: int, from_date: str, to_date: str) -> Optiona
 
 def delete_absence(absence_id: int) -> bool:
     return _delete(f"/constraints/absences/{absence_id}")
+
+
+def delete_absence_range(staff_id: int, from_date: str, to_date: str) -> bool:
+    return _delete("/constraints/absences/range", params={
+        "staff_id": staff_id, "from_date": from_date, "to_date": to_date,
+    })
 
 
 # ══════════════════════════════════════════════════════════════
@@ -243,11 +249,14 @@ def confirm_week_shifts(week_start: str) -> Optional[dict]:
 
 
 def update_shift(shift_id: int, leader_id: int = None, sp_id: int = None,
-                 nv_ids: list = None, sp_warning: str = None) -> Optional[dict]:
-    body = {}
+                 nv_ids: list = None, sp_warning: str = None,
+                 clear_sp: bool = False) -> Optional[dict]:
+    body: dict = {}
     if leader_id is not None:
         body["leader_id"] = leader_id
-    if sp_id is not None:
+    if clear_sp:
+        body["clear_sp"] = True
+    elif sp_id is not None:
         body["sp_id"] = sp_id
     if nv_ids is not None:
         body["nv_ids"] = nv_ids

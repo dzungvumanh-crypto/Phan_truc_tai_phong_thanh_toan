@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from frontend import api_client
 from frontend.components import common
 from frontend.components.shift_card import render_shift_card_compact, render_empty_day_card
+from frontend.components.week_grid import render_week_grid
 
 
 def schedule_planner_page():
@@ -18,6 +19,10 @@ def schedule_planner_page():
     state = {
         "current_week_start": _get_monday_of_week(datetime.now()),
         "schedule": [],
+        "holiday_map": {
+            h["date"]: (h.get("label") or "Ngày lễ")
+            for h in (api_client.get_special_days(day_type="holiday") or [])
+        },
     }
 
     def load_week():
@@ -88,7 +93,11 @@ def schedule_planner_page():
         # ── Week grid container — created before refresh_week is defined ────
         week_container = ui.column().classes("w-full")
         with week_container:
-            _render_week_grid(state)
+            render_week_grid(
+                state,
+                on_edit_click=lambda s: _open_edit_dialog(s, state),
+                on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
+            )
 
     # ── refresh_week defined after week_container and week_label exist ────
     def refresh_week():
@@ -99,7 +108,11 @@ def schedule_planner_page():
         )
         week_container.clear()
         with week_container:
-            _render_week_grid(state)
+            render_week_grid(
+                state,
+                on_edit_click=lambda s: _open_edit_dialog(s, state),
+                on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
+            )
 
     state["refresh"] = refresh_week
 
@@ -120,39 +133,6 @@ def _today_week(state: dict):
     state["current_week_start"] = _get_monday_of_week(datetime.now())
 
 
-def _render_week_grid(state: dict):
-    """Render 5-column grid Mon-Fri."""
-    weekdays = [
-        ("Thứ 2 (T2)", 0),
-        ("Thứ 3 (T3)", 1),
-        ("Thứ 4 (T4)", 2),
-        ("Thứ 5 (T5)", 3),
-        ("Thứ 6 (T6)", 4),
-    ]
-
-    with ui.row().classes("w-full border-b-2 border-blue-8 gap-2 mb-4"):
-        for day_label, _ in weekdays:
-            ui.label(day_label).classes("text-h6 text-center font-bold flex-1")
-
-    with ui.row().classes("w-full gap-2"):
-        for day_label, day_offset in weekdays:
-            col_date = state["current_week_start"] + timedelta(days=day_offset)
-            date_str = col_date.strftime("%Y-%m-%d")
-            shifts = [s for s in state["schedule"] if s.get("shift_date") == date_str]
-
-            with ui.column().classes("flex-1 border border-grey-3 p-3 rounded-md bg-white"):
-                ui.label(col_date.strftime("%d/%m")).classes("text-h6 text-blue-8 font-bold")
-                if shifts:
-                    for shift in shifts:
-                        render_shift_card_compact(shift)
-                        if shift.get("sp_warning"):
-                            warn_label, warn_color = common.SP_WARNING_LABELS.get(
-                                shift["sp_warning"], (shift["sp_warning"], "grey")
-                            )
-                            ui.badge(warn_label, color=warn_color).classes("text-xs")
-                else:
-                    render_empty_day_card()
-
 
 def _compute_cutoff(state: dict):
     week_start = state["current_week_start"]
@@ -161,6 +141,7 @@ def _compute_cutoff(state: dict):
         f"Tinh 2 ngay cutoff cho thang {month}/{year}?",
         on_confirm=lambda: _do_compute_cutoff(month, year, state),
         confirm_label="Tinh",
+        confirm_color="primary",
     )
 
 
@@ -199,7 +180,18 @@ def _generate_week(state: dict):
                 )
                 if result:
                     created = result.get("created", 0) if isinstance(result, dict) else 0
+                    warnings = result.get("warnings", []) if isinstance(result, dict) else []
                     common.show_notify(f"Phân lịch thành công: {created} ca", type="positive")
+                    # A3: Hiển thị warnings sau generate
+                    if warnings:
+                        if len(warnings) <= 3:
+                            for w in warnings:
+                                msg = w.get("msg", str(w)) if isinstance(w, dict) else str(w)
+                                wtype = w.get("type", "") if isinstance(w, dict) else ""
+                                icon = "🔴" if wtype in ("no_sp", "no_leader") else "⚠️"
+                                common.show_notify(f"{icon} {msg}", type="warning", timeout=8000)
+                        else:
+                            _show_warnings_dialog(warnings)
                     if state.get("refresh"):
                         state["refresh"]()
                 else:
@@ -217,6 +209,7 @@ def _confirm_week(state: dict):
         f"Xac nhan tat ca ca trong tuan {ws.strftime('%d/%m')} - {we}?",
         on_confirm=lambda: _do_confirm_week(state),
         confirm_label="Xac nhan",
+        confirm_color="primary",
     )
 
 
@@ -250,3 +243,91 @@ def _do_delete_week(state: dict):
             state["refresh"]()
     else:
         common.show_notify("Lỗi xóa ca tuần", type="negative")
+
+
+def _open_edit_dialog(shift: dict, state: dict):
+    """A4: Dialog sửa tay ca trực."""
+    all_staff = api_client.get_staff() or []
+    ld_options = {s["id"]: s["full_name"] for s in all_staff if s.get("role") == "LD"}
+    sp_options = {0: "(Bỏ trống SP)"}
+    sp_options.update({s["id"]: s["full_name"] for s in all_staff if s.get("role") == "SP"})
+    nv_options = {s["id"]: s["full_name"] for s in all_staff if s.get("role") == "NV"}
+
+    current_leader_id = (shift.get("leader") or {}).get("id")
+    current_sp_id = (shift.get("sp") or {}).get("id") or 0
+    current_nv_ids = [nv["id"] for nv in (shift.get("nvs") or [])]
+
+    shift_date = shift.get("shift_date", "")
+    shift_type_label = shift.get("shift_type", "").replace("_", " ").title()
+
+    with ui.dialog() as dlg, ui.card().classes("p-6 min-w-96"):
+        ui.label(f"✏️ Sửa ca {shift_type_label} — {shift_date}").classes(
+            "text-lg font-bold mb-4"
+        )
+
+        sel_ld = ui.select(
+            ld_options, value=current_leader_id, label="Lãnh đạo"
+        ).classes("w-full mb-2")
+
+        sel_sp = ui.select(
+            sp_options, value=current_sp_id, label="Song Phương (0 = bỏ trống)"
+        ).classes("w-full mb-2")
+
+        sel_nv = ui.select(
+            nv_options, value=current_nv_ids, label="Nhân viên", multiple=True
+        ).classes("w-full mb-4")
+
+        with ui.row().classes("justify-end gap-2"):
+            ui.button("Hủy", on_click=dlg.close).props("flat")
+
+            def save():
+                nv_ids = sel_nv.value or []
+                if isinstance(nv_ids, int):
+                    nv_ids = [nv_ids]
+                if not nv_ids:
+                    common.show_notify("⚠️ Cần chọn ít nhất 1 NV", type="warning")
+                    return
+                sp_val = sel_sp.value
+                result = api_client.update_shift(
+                    shift["id"],
+                    leader_id=sel_ld.value,
+                    sp_id=sp_val if sp_val and sp_val != 0 else None,
+                    clear_sp=(sp_val == 0),
+                    nv_ids=nv_ids,
+                )
+                dlg.close()
+                if result:
+                    common.show_notify("Đã cập nhật ca trực", type="positive")
+                    if state.get("refresh"):
+                        state["refresh"]()
+                else:
+                    common.show_notify("Lỗi cập nhật ca", type="negative")
+
+            ui.button("Lưu", on_click=save).props("color=primary")
+
+    dlg.open()
+
+
+def _confirm_single_shift(shift_id: int, state: dict):
+    """B6: Xác nhận 1 ca trực riêng lẻ."""
+    result = api_client.confirm_shift(shift_id)
+    if result:
+        common.show_notify("Đã xác nhận ca", type="positive")
+        if state.get("refresh"):
+            state["refresh"]()
+    else:
+        common.show_notify("Lỗi xác nhận ca", type="negative")
+
+
+def _show_warnings_dialog(warnings: list):
+    """A3: Dialog tổng hợp warnings khi có nhiều hơn 3 cảnh báo."""
+    with ui.dialog() as dlg_warn, ui.card().classes("p-6 min-w-96 max-w-lg"):
+        ui.label("⚠️ Cảnh báo sau phân lịch").classes("text-lg font-bold text-orange-7 mb-3")
+        for w in warnings:
+            msg = w.get("msg", str(w)) if isinstance(w, dict) else str(w)
+            wtype = w.get("type", "") if isinstance(w, dict) else ""
+            icon = "🔴" if wtype in ("no_sp", "no_leader") else "⚠️"
+            ui.label(f"{icon} {msg}").classes("text-body2 text-grey-8 mb-1")
+        with ui.row().classes("justify-end mt-4"):
+            ui.button("Đã hiểu", on_click=dlg_warn.close).props("color=orange")
+    dlg_warn.open()

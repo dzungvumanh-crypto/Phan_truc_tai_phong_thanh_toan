@@ -470,6 +470,56 @@ def _render_tab_absence(state: dict):
 
             ui.button("➕ Thêm", on_click=add_absence).props("color=green-7").classes("mt-5")
 
+    # ── N6: Xóa vắng theo khoảng ────
+    with ui.card().classes("p-4 bg-orange-1 w-full mb-3"):
+        ui.label("Xóa vắng theo khoảng").classes("text-body2 font-bold mb-2")
+        del_state = {"staff_id": None, "from_date": "", "to_date": ""}
+        with ui.row().classes("items-end gap-3 flex-wrap"):
+            with ui.column().classes("gap-1"):
+                ui.label("Nhân sự:").classes("text-caption")
+                ui.select(
+                    options={s["id"]: s["full_name"] for s in all_staff},
+                    value=None,
+                    on_change=lambda e: del_state.update({"staff_id": e.value})
+                ).classes("w-44")
+            with ui.column().classes("gap-1"):
+                ui.label("Từ ngày:").classes("text-caption")
+                ui.input(
+                    on_change=lambda e: del_state.update({"from_date": e.value or ""})
+                ).props("type=date").classes("w-36")
+            with ui.column().classes("gap-1"):
+                ui.label("Đến ngày:").classes("text-caption")
+                ui.input(
+                    on_change=lambda e: del_state.update({"to_date": e.value or ""})
+                ).props("type=date").classes("w-36")
+
+            def _confirm_delete_range():
+                if not del_state["staff_id"]:
+                    common.show_notify("⚠️ Chọn nhân sự", type="warning")
+                    return
+                if not del_state["from_date"] or not del_state["to_date"]:
+                    common.show_notify("⚠️ Nhập đầy đủ khoảng ngày", type="warning")
+                    return
+                if del_state["to_date"] < del_state["from_date"]:
+                    common.show_notify("⚠️ Ngày kết thúc phải sau ngày bắt đầu", type="warning")
+                    return
+                staff_name = next(
+                    (s["full_name"] for s in all_staff if s["id"] == del_state["staff_id"]),
+                    "nhân sự"
+                )
+                common.confirm_dialog(
+                    f"Xóa vắng của {staff_name} từ {del_state['from_date']} đến {del_state['to_date']}?",
+                    on_confirm=lambda: _do_delete_range(
+                        del_state["staff_id"], del_state["from_date"], del_state["to_date"],
+                        load_data, render_list
+                    ),
+                    confirm_label="Xóa",
+                )
+
+            ui.button("🗑 Xóa khoảng", on_click=_confirm_delete_range).props(
+                "color=orange-7 outline"
+            ).classes("mt-5")
+
     # ── List ────
     list_container = ui.column().classes("w-full")
 
@@ -527,11 +577,23 @@ def _delete_absence(item_id: int, load_fn, render_fn):
         common.show_notify("❌ Lỗi xóa", type="negative")
 
 
+def _do_delete_range(staff_id: int, from_date: str, to_date: str, load_fn, render_fn):
+    ok = api_client.delete_absence_range(staff_id, from_date, to_date)
+    if ok:
+        common.show_notify("✅ Đã xóa vắng theo khoảng", type="positive")
+        load_fn()
+        render_fn()
+    else:
+        common.show_notify("❌ Lỗi xóa khoảng vắng", type="negative")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — Đăng ký xin trực
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _render_tab_request(state: dict):
+    all_staff = state["all_staff"]
+
     req_state = {
         "year":           state["year"],
         "data":           [],
@@ -539,9 +601,8 @@ def _render_tab_request(state: dict):
         "form_type":      "once",
         "form_date":      "",
         "form_dow":       0,
+        "all_staff":      all_staff,
     }
-
-    all_staff = state["all_staff"]
 
     def load_data():
         req_state["data"] = api_client.get_requests(year=req_state["year"]) or []
@@ -670,6 +731,9 @@ def _render_request_list(req_state: dict, load_fn, render_fn):
         ui.label("(Không có đăng ký xin trực nào)").classes("text-grey-6 italic")
         return
 
+    # R5: map staff_id → is_on_project để hiển thị badge
+    staff_map = {s["id"]: s for s in req_state.get("all_staff", [])}
+
     # Header
     with ui.row().classes("w-full border-b-2 border-grey-4 pb-1 px-2"):
         ui.label("Nhân sự").classes("font-bold text-body2 flex-1")
@@ -685,6 +749,7 @@ def _render_request_list(req_state: dict, load_fn, render_fn):
         specific_date = item.get("specific_date")
         dow = item.get("day_of_week")
         is_active = item.get("is_active", True)
+        is_on_project = staff_map.get(item.get("staff_id"), {}).get("is_on_project", 0)
 
         # Display ngày/thứ
         if rtype == "once" and specific_date:
@@ -694,10 +759,13 @@ def _render_request_list(req_state: dict, load_fn, render_fn):
         else:
             date_display = "—"
 
-        with ui.row().classes(
-            "w-full border-b border-grey-2 px-2 py-2 items-center hover:bg-blue-1"
-        ):
-            ui.label(staff_name).classes("flex-1 text-body2")
+        row_class = "w-full border-b border-grey-2 px-2 py-2 items-center"
+        row_class += " opacity-60" if is_on_project else " hover:bg-blue-1"
+        with ui.row().classes(row_class):
+            with ui.row().classes("flex-1 items-center gap-2"):
+                ui.label(staff_name).classes("text-body2")
+                if is_on_project:
+                    ui.badge("Đi dự án", color="orange").classes("text-xs")
 
             with ui.column().classes("w-28"):
                 color = "blue" if rtype == "once" else "teal"

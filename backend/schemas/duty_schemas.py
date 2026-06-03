@@ -229,6 +229,7 @@ class ShiftOut(BaseModel):
 class ShiftUpdate(BaseModel):
     leader_id: Optional[int] = None
     sp_id: Optional[int] = None
+    clear_sp: bool = False  # V1: True = xóa SP về NULL; sp_id=None không đủ để phân biệt
     nv_ids: List[int] = []
     sp_warning: Optional[str] = None
 

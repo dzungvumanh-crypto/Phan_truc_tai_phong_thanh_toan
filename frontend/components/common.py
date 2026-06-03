@@ -56,15 +56,42 @@ def show_notify(msg: str, type: str = "positive", timeout: int = 3000):
 
 # ── Confirm dialog ────────────────────────────────────────────────────────────
 def confirm_dialog(message: str, on_confirm, confirm_label: str = "Xác nhận",
-                   cancel_label: str = "Hủy"):
+                   cancel_label: str = "Hủy", confirm_color: str = "negative"):
+    # T2: confirm_color param — destructive actions dùng "negative", tích cực dùng "primary"
     with ui.dialog() as dialog, ui.card().classes("p-4 min-w-[300px]"):
         ui.label(message).classes("text-body1 mb-4")
         with ui.row().classes("justify-end gap-2"):
             ui.button(cancel_label, on_click=dialog.close).props("flat")
             ui.button(confirm_label, on_click=lambda: (on_confirm(), dialog.close())).props(
-                "color=negative"
+                f"color={confirm_color}"
             )
     dialog.open()
+
+
+# ── Loading + feedback wrapper ────────────────────────────────────────────────
+def run_with_feedback(action_fn, loading_msg: str = "Đang xử lý...",
+                      success_msg: str = "Thành công",
+                      error_msg: str = "Có lỗi xảy ra",
+                      on_success=None):
+    """
+    C5: Chạy action_fn() với spinner, sau đó notify kết quả.
+    Dùng cho generate, confirm, delete week.
+    """
+    notif = ui.notify(loading_msg, type="ongoing", spinner=True, timeout=0)
+    try:
+        result = action_fn()
+        notif.dismiss()
+        if result is not False and result is not None:
+            show_notify(f"✅ {success_msg}", type="positive")
+            if on_success:
+                on_success(result)
+        else:
+            show_notify(f"❌ {error_msg}", type="negative")
+        return result
+    except Exception as e:
+        notif.dismiss()
+        show_notify(f"❌ {error_msg}: {e}", type="negative")
+        return None
 
 
 # ── Badges ────────────────────────────────────────────────────────────────────

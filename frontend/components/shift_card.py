@@ -97,17 +97,24 @@ def render_shift_card(shift: dict, on_edit_click=None):
                 ).props("size=xs flat dense color=blue-7")
 
 
-def render_shift_card_compact(shift: dict):
+def render_shift_card_compact(shift: dict, on_edit_click=None, on_confirm_click=None):
     """
     Render compact version cho calendar/tuần view.
     Hiển thị tên LĐ, SP và danh sách tên NV.
+    A4: on_edit_click — callback khi click nút ✏️ Sửa
+    B6: on_confirm_click — callback khi click nút ✅ (chỉ hiện khi ca ở trạng thái draft)
     """
     leader = shift.get("leader") or {}
     sp = shift.get("sp") or {}
     nvs = shift.get("nvs") or []
+    sp_warning = shift.get("sp_warning")
 
     leader_name = leader.get("full_name", "?")
+
+    # R4: Khi lãnh đạo kiêm SP, hiển thị rõ thay vì "—"
     sp_name = sp.get("full_name", "—")
+    if sp_warning == "leader_sp" and sp_name == "—":
+        sp_name = f"↑ {leader_name} (kiêm SP)" if leader_name and leader_name != "?" else "(LĐ kiêm SP)"
 
     # Hiển thị tên NV — rút gọn nếu quá nhiều (tối đa 3 người + "...")
     nv_names_list = [nv.get("full_name", "?") for nv in nvs]
@@ -120,6 +127,20 @@ def render_shift_card_compact(shift: dict):
         ui.label(leader_name).classes("text-xs text-blue-8 font-medium")
         ui.label(sp_name).classes("text-xs text-purple-7")
         ui.label(nv_text).classes("text-xs text-green-8")
+
+        # A4 + B6: Nút hành động compact
+        if on_edit_click or (on_confirm_click and shift.get("status") == "draft"):
+            with ui.row().classes("gap-1 mt-1"):
+                if on_confirm_click and shift.get("status") == "draft":
+                    ui.button(
+                        "✅",
+                        on_click=lambda s=shift: on_confirm_click(s),
+                    ).props("size=xs flat dense color=green-7").tooltip("Xác nhận ca này")
+                if on_edit_click:
+                    ui.button(
+                        "✏️",
+                        on_click=lambda s=shift: on_edit_click(s),
+                    ).props("size=xs flat dense color=blue-7").tooltip("Sửa ca")
 
 
 def render_empty_day_card():

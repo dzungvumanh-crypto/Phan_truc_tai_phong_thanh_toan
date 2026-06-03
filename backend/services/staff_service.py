@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 import json
-from backend.models.duty_models import Staff, Absence, DutyShift
+from backend.models.duty_models import Staff, Absence, DutyShift, DutyShiftNV
 
 
 def get_all_staff(db: Session, role: Optional[str] = None,
@@ -75,7 +75,26 @@ def update_staff(db: Session, staff_id: int, full_name: Optional[str] = None,
         return None
     if full_name is not None:
         s.full_name = full_name
-    if role is not None:
+    if role is not None and role != s.role:
+        # P1: Sync rotation_state khi đổi role
+        from backend.models.duty_models import RotationState
+        from backend.config import CURRENT_YEAR
+        old_rot_roles = _ROLE_MAP.get(s.role, [])
+        new_rot_roles = _ROLE_MAP.get(role, [])
+        # Xóa rotation_state cũ
+        if old_rot_roles:
+            db.query(RotationState).filter(
+                RotationState.staff_id == staff_id,
+                RotationState.role.in_(old_rot_roles),
+            ).delete(synchronize_session=False)
+        # Tạo rotation_state mới
+        cur_display = display_order if display_order is not None else s.display_order
+        for rot_role in new_rot_roles:
+            db.add(RotationState(
+                year=CURRENT_YEAR, role=rot_role, staff_id=staff_id,
+                shift_count=0, last_used=None,
+                position=cur_display * 10 + staff_id,
+            ))
         s.role = role
     if is_on_project is not None:
         s.is_on_project = 1 if is_on_project else 0
@@ -90,14 +109,18 @@ def delete_staff(db: Session, staff_id: int) -> bool:
     s = get_staff_by_id(db, staff_id)
     if not s:
         return False
-    shifts = db.query(DutyShift).filter(
-        DutyShift.nv_ids.like(f'%{staff_id}%')
-    ).all()
-    for shift in shifts:
-        nv_list = json.loads(shift.nv_ids or "[]")
-        nv_list = [nid for nid in nv_list if nid != staff_id]
-        shift.nv_ids = json.dumps(nv_list)
-        shift.nv_count = len(nv_list)
+    # V6: Dùng DutyShiftNV để tìm đúng ca — tránh LIKE bug với ID trùng chữ số
+    shift_ids = [
+        row.shift_id
+        for row in db.query(DutyShiftNV.shift_id).filter_by(staff_id=staff_id).all()
+    ]
+    if shift_ids:
+        for shift in db.query(DutyShift).filter(DutyShift.id.in_(shift_ids)).all():
+            nv_list = json.loads(shift.nv_ids or "[]")
+            nv_list = [nid for nid in nv_list if nid != staff_id]
+            shift.nv_ids = json.dumps(nv_list)
+            shift.nv_count = len(nv_list)
+        db.query(DutyShiftNV).filter_by(staff_id=staff_id).delete()
     db.delete(s)
     db.commit()
     return True

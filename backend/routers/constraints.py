@@ -63,6 +63,17 @@ def create_absence(body: AbsenceCreate, db: Session = Depends(get_db)):
     )
 
 
+@router.delete("/absences/range", response_model=MessageOut)
+def delete_absence_range(
+    staff_id: int = Query(...),
+    from_date: str = Query(...),
+    to_date: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    result = constraint_service.delete_absence_range(db, staff_id, from_date, to_date)
+    return MessageOut(message=f"Đã xóa {result['deleted']} khai báo vắng")
+
+
 @router.delete("/absences/{absence_id}", response_model=MessageOut)
 def delete_absence(absence_id: int, db: Session = Depends(get_db)):
     ok = constraint_service.delete_absence(db, absence_id)
@@ -115,12 +126,12 @@ def validate_request(
 
 @router.post("/requests", response_model=RequestOut)
 def create_request(body: RequestCreate, db: Session = Depends(get_db)):
-    # Validate NV slot nếu là NV
     staff = get_staff_by_id(db, body.staff_id)
     if not staff:
         raise HTTPException(404, "Không tìm thấy nhân sự")
 
-    if staff.role == "NV" and body.request_type == "once" and body.specific_date:
+    # N2+V2: Validate absence cho mọi role; validate slot limit chỉ cho NV
+    if body.request_type == "once" and body.specific_date:
         allowed, msg, _, _ = constraint_service.validate_nv_request(
             db, body.staff_id, body.specific_date, body.year
         )
@@ -211,10 +222,13 @@ def confirm_special_day(special_day_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/special-days/{special_day_id}", response_model=MessageOut)
 def delete_special_day(special_day_id: int, db: Session = Depends(get_db)):
-    ok = constraint_service.delete_special_day(db, special_day_id)
-    if not ok:
+    result = constraint_service.delete_special_day(db, special_day_id)
+    if not result["deleted"]:
         raise HTTPException(404, "Không tìm thấy ngày đặc biệt")
-    return MessageOut(message="Đã xóa ngày đặc biệt")
+    msg = "Đã xóa ngày đặc biệt"
+    if result.get("warning"):
+        msg += f". ⚠️ {result['warning']}"
+    return MessageOut(message=msg)
 
 
 # ══════════════════════════════════════════════════════════════

@@ -84,6 +84,7 @@ def update_shift(shift_id: int, body: ShiftUpdate, db: Session = Depends(get_db)
         sp_id=body.sp_id,
         nv_ids=body.nv_ids,
         sp_warning=body.sp_warning,
+        clear_sp=body.clear_sp,
     )
     if not result:
         raise HTTPException(404, "Không tìm thấy ca trực")
