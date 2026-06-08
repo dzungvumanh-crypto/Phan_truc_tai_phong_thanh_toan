@@ -29,7 +29,15 @@ def export_week_schedule(
     year = start.year
     cfg = constraint_service.get_shift_config(db, year)
     signer = (cfg.signer_name if cfg and cfg.signer_name else "Nguyễn Quốc Hùng")
-    excel_bytes = export_service.build_week_excel(shifts, start, end, signer_name=signer)
+    # N4: build holiday_map cho tuần (date_str → label) — query năm, filter theo range
+    start_str = start.strftime("%Y-%m-%d")
+    end_str   = end.strftime("%Y-%m-%d")
+    holiday_rows = constraint_service.list_special_days(db, day_type="holiday", year=year)
+    holiday_map = {r.date: (r.label or "") for r in holiday_rows
+                   if start_str <= r.date <= end_str}
+    excel_bytes = export_service.build_week_excel(
+        shifts, start, end, signer_name=signer, holiday_map=holiday_map
+    )
 
     filename = f"lich_truc_{start:%d%m%Y}_{end:%d%m%Y}.xlsx"
     return Response(

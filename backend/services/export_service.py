@@ -72,12 +72,17 @@ _SHIFT_TYPE_SUFFIX = {   # N8: label ngày đặc biệt trong cột THỨ
 }
 
 
+CLR_HOLIDAY_BG = "E8E8E8"   # N4: xám cho hàng ngày lễ
+
+
 def build_week_excel(shifts: list, week_start: date, week_end: date,
-                     signer_name: str = "Nguyễn Quốc Hùng") -> bytes:
+                     signer_name: str = "Nguyễn Quốc Hùng",
+                     holiday_map: dict | None = None) -> bytes:
     """
     Tạo file .xlsx cho 1 tuần — khổ A4 ngang.
     shifts: list shift dict (từ schedule_service.get_shifts_for_week / _enrich_shift)
     signer_name: N1 — tên người ký từ shift_config (fallback hard-code)
+    holiday_map: N4 — dict {date_str: label} ngày lễ trong tuần
     Trả về bytes.
     """
     wb = Workbook()
@@ -168,9 +173,18 @@ def build_week_excel(shifts: list, week_start: date, week_end: date,
                            if s.get("shift_type") == "settlement_sub"), None)
 
         if main_shift is None and sub_shift is None:
-            _apply_row(ws, current_row,
-                       [thu_label, date_label, "", "", "", "", "", ""],
-                       fill_hex=CLR_WHITE)
+            # N4: Ngày lễ — hiển thị label thay vì để trắng
+            if holiday_map and date_str in holiday_map:
+                holiday_label = holiday_map[date_str]
+                holiday_text = f"(Nghỉ lễ: {holiday_label})" if holiday_label else "(Nghỉ lễ)"
+                ws.merge_cells(f"C{current_row}:E{current_row}")
+                _apply_row(ws, current_row,
+                           [thu_label, date_label, holiday_text, "", "", "", "", ""],
+                           fill_hex=CLR_HOLIDAY_BG, font_colors=["808080"] * 8)
+            else:
+                _apply_row(ws, current_row,
+                           [thu_label, date_label, "", "", "", "", "", ""],
+                           fill_hex=CLR_WHITE)
             current_row += 1
             current += timedelta(days=1)
             continue

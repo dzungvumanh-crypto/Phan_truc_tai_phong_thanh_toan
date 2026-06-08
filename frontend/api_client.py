@@ -12,6 +12,30 @@ from typing import Optional, List
 BASE_URL = "http://localhost:8001/api/v1"
 _TIMEOUT = 15.0
 
+# T5: Lưu lỗi gần nhất để caller hiển thị thông báo chính xác
+_last_error: dict = {"code": 0, "message": ""}
+
+
+def _store_error(code: int, message: str):
+    _last_error["code"] = code
+    _last_error["message"] = message
+
+
+def get_last_api_error() -> str:
+    """T5: Trả về thông báo lỗi của lần gọi API gần nhất (POST/PUT/DELETE)."""
+    return _last_error.get("message", "")
+
+
+def _extract_detail(r) -> str:
+    """Trích xuất trường 'detail' từ JSON response của FastAPI."""
+    try:
+        body = r.json()
+        if isinstance(body, dict):
+            return str(body.get("detail", r.text))
+        return r.text
+    except Exception:
+        return r.text
+
 
 def _get(path: str, params: dict = None) -> Optional[dict | list]:
     try:
@@ -27,8 +51,15 @@ def _post(path: str, json: dict = None, params: dict = None) -> Optional[dict | 
     try:
         r = httpx.post(f"{BASE_URL}{path}", json=json, params=params, timeout=_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
+        _store_error(0, "")
         return r.json()
+    except httpx.HTTPStatusError as e:
+        detail = _extract_detail(e.response)
+        _store_error(e.response.status_code, detail)
+        print(f"[API POST] {path} -> HTTP {e.response.status_code}: {detail}")
+        return None
     except Exception as e:
+        _store_error(0, "Không thể kết nối server")
         print(f"[API POST] {path} -> ERROR: {e}")
         return None
 
@@ -37,8 +68,15 @@ def _put(path: str, json: dict = None, params: dict = None) -> Optional[dict]:
     try:
         r = httpx.put(f"{BASE_URL}{path}", json=json, params=params, timeout=_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
+        _store_error(0, "")
         return r.json()
+    except httpx.HTTPStatusError as e:
+        detail = _extract_detail(e.response)
+        _store_error(e.response.status_code, detail)
+        print(f"[API PUT] {path} -> HTTP {e.response.status_code}: {detail}")
+        return None
     except Exception as e:
+        _store_error(0, "Không thể kết nối server")
         print(f"[API PUT] {path} -> ERROR: {e}")
         return None
 
@@ -47,8 +85,15 @@ def _delete(path: str, params: dict = None) -> bool:
     try:
         r = httpx.delete(f"{BASE_URL}{path}", params=params, timeout=_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
+        _store_error(0, "")
         return True
+    except httpx.HTTPStatusError as e:
+        detail = _extract_detail(e.response)
+        _store_error(e.response.status_code, detail)
+        print(f"[API DELETE] {path} -> HTTP {e.response.status_code}: {detail}")
+        return False
     except Exception as e:
+        _store_error(0, "Không thể kết nối server")
         print(f"[API DELETE] {path} -> ERROR: {e}")
         return False
 

@@ -125,20 +125,23 @@ def _pick_leader(db: Session, pool_ld: List[Staff], requests: dict,
     """
     Chọn 1 Lãnh đạo. Ưu tiên người chưa trực tuần này (fresh) trước.
     rotation_role: 'LD' | 'LD_friday' | 'LD_cutoff'
-    Fix: thêm week_ids để tránh phân LĐ đã kiêm SP backup cùng tuần.
+    once_ids: người đăng ký 'once' → forced vào fresh pool dù đã trực tuần.
     """
     if not pool_ld:
         return None
 
     week_ids = get_week_assignees(db, date_str)
-
-    # Ưu tiên LĐ chưa trực tuần này (kể cả chưa làm SP backup)
-    fresh_ld   = [p for p in pool_ld if p.id not in week_ids]
-    repeat_ld  = [p for p in pool_ld if p.id in week_ids]
-
+    once_ids = set(requests.get("once_ids", set()))
     requested_ids = set(requests.get("LD", []))
 
-    if fresh_ld:
+    # Forced: đăng ký 'once' ngày cụ thể — ưu tiên tuyệt đối dù đã trực tuần
+    forced = [p for p in pool_ld if p.id in once_ids]
+    fresh_ld  = [p for p in pool_ld if p.id not in week_ids and p.id not in once_ids]
+    repeat_ld = [p for p in pool_ld if p.id in week_ids and p.id not in once_ids]
+
+    if forced:
+        candidates = forced
+    elif fresh_ld:
         requested = [p for p in fresh_ld if p.id in requested_ids]
         candidates = requested if requested else fresh_ld
     else:
@@ -156,26 +159,15 @@ def _pick_leader(db: Session, pool_ld: List[Staff], requests: dict,
 
 
 def _pick_sp(db: Session, pool: dict, requests: dict,
-             year: int, date_str: str,
-             ld_role: str = "LD") -> Tuple[Optional[Staff], Optional[str]]:
+             year: int, date_str: str) -> Tuple[Optional[Staff], Optional[str]]:
     """
-    Chọn người tác nghiệp Song Phương. Logic 5 cấp (ưu tiên fresh trong tuần).
-    Trả (person, warning_code):
-      warning_code = None | 'leader_sp' | 'no_sp'
-    ld_role: rotation role dùng khi backup leader kiêm nhiệm ('LD' | 'LD_friday' | 'LD_cutoff')
-
-    Thứ tự ưu tiên:
-      1a. SP sẵn + chưa trực tuần này
-      2a. Backup LD (Mỹ Linh/Bích Phương) chưa trực tuần này
-      2b. Backup LD đã trực tuần (vẫn ưu tiên hơn SP tổ trực lần 2) ← SP-FIX-1
-      1b. SP đã trực tuần này (fallback khi cả SP và backup đều kiệt)
-      3.  Không ai → no_sp
+    Chon nguoi to SP xu ly Song Phuong. Chi 2 cap (backup LD duoc xu ly o _generate_*).
+    Tra (person, warning_code): warning_code = None | 'no_sp'
     """
     pool_sp = pool["SP"]
-    pool_ld = pool["LD"]
     week_ids = get_week_assignees(db, date_str)
 
-    # Cấp 1a: SP sẵn + chưa trực tuần này
+    # Cap 1: SP fresh (chua truc tuan)
     fresh_sp = [p for p in pool_sp if p.id not in week_ids]
     if fresh_sp:
         requested_ids = set(requests.get("SP", []))
@@ -186,25 +178,7 @@ def _pick_sp(db: Session, pool: dict, requests: dict,
             _update_rotation(db, winner.id, year, "SP", date_str)
         return winner, None
 
-    # Cấp 2a: backup LD chưa trực tuần này — kiêm Lãnh đạo + Song Phương
-    # T3: dùng is_sp_backup từ DB (admin có thể toggle qua Roster List UI)
-    backup = [p for p in pool_ld
-              if getattr(p, "is_sp_backup", 0) == 1 and p.id not in week_ids]
-    if backup:
-        winner = _pick_by_rotation(db, backup, year, ld_role, current_date=date_str)
-        if winner:
-            _update_rotation(db, winner.id, year, ld_role, date_str)
-        return winner, "leader_sp"
-
-    # Cấp 2b: backup LD đã trực tuần (SP-FIX-1: vẫn ưu tiên hơn SP tổ trực lần 2)
-    backup_repeat = [p for p in pool_ld if getattr(p, "is_sp_backup", 0) == 1]
-    if backup_repeat:
-        winner = _pick_by_rotation(db, backup_repeat, year, ld_role, current_date=date_str)
-        if winner:
-            _update_rotation(db, winner.id, year, ld_role, date_str)
-        return winner, "leader_sp"
-
-    # Cấp 1b: fallback — dùng lại SP đã trực (tất cả fresh đã hết, cả backup cũng kiệt)
+    # Cap 2: SP repeat (da truc tuan — luan phien lan 2)
     if pool_sp:
         requested_ids = set(requests.get("SP", []))
         requested = [p for p in pool_sp if p.id in requested_ids]
@@ -214,7 +188,6 @@ def _pick_sp(db: Session, pool: dict, requests: dict,
             _update_rotation(db, winner.id, year, "SP", date_str)
         return winner, None
 
-    # Cấp 3: không ai
     return None, "no_sp"
 
 
@@ -224,22 +197,26 @@ def _pick_nvs(db: Session, pool_nv: List[Staff], requests: dict,
               rotation_role: str = "NV") -> List[Staff]:
     """
     Chọn danh sách NV cho ca.
-    - sp_warning='leader_sp' → cố định 2 NV
-    - Ưu tiên: NV chưa trực tuần này (fresh) → NV đã trực tuần (fallback)
-    - Trong mỗi nhóm: người đăng ký trước, sau đó vòng xoay
+    - Ưu tiên: once_ids (đảm bảo) → fresh (chưa trực tuần) → repeat
+    - Trong mỗi nhóm: người đăng ký weekly trước, sau đó vòng xoay
     rotation_role: 'NV' | 'NV_friday' | 'NV_cutoff'
     """
-    actual_slots = 2 if sp_warning == "leader_sp" else nv_slots
+    # Khi không có SP handler (leader_sp / no_sp): cần +1 NV để đủ 1 LĐ + 2 NV
+    actual_slots = nv_slots if sp_warning is None else nv_slots + 1
 
     week_ids = get_week_assignees(db, date_str)
-    fresh_nv    = [p for p in pool_nv if p.id not in week_ids]
-    repeated_nv = [p for p in pool_nv if p.id in week_ids]
-
+    once_ids = set(requests.get("once_ids", set()))
     requested_ids = set(requests.get("NV", []))
 
-    # Xây dựng ordered_pool: fresh (có đăng ký → vòng xoay) rồi repeated
+    # Forced: đăng ký 'once' → luôn vào fresh pool
+    forced_nv   = [p for p in pool_nv if p.id in once_ids]
+    fresh_nv    = [p for p in pool_nv if p.id not in week_ids and p.id not in once_ids]
+    repeated_nv = [p for p in pool_nv if p.id in week_ids and p.id not in once_ids]
+
+    # Xây dựng ordered_pool: forced → fresh (weekly prio → rotation) → repeated
     ordered_pool: List[Staff] = (
-        [p for p in fresh_nv if p.id in requested_ids]
+        forced_nv
+        + [p for p in fresh_nv if p.id in requested_ids]
         + _sort_by_rotation(db, [p for p in fresh_nv if p.id not in requested_ids],
                             year, rotation_role, current_date=date_str)
         + [p for p in repeated_nv if p.id in requested_ids]
@@ -296,22 +273,21 @@ def _generate_normal_or_friday(db: Session, date_str: str, year: int,
     requests = get_requests_for_date(db, date_str, year)
     warnings = []
 
-    sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, ld_role)
+    leader = _pick_leader(db, pool["LD"], requests, year, date_str, ld_role)
 
-    if sp_warn == "leader_sp":
-        leader = sp          # backup LD là leader của ca, kiêm Song Phương
-        sp = None            # slot SP để trống
-        name = leader.full_name if leader else "?"
+    if leader and getattr(leader, "is_sp_backup", 0) == 1:
+        # LD la backup (My Linh/Bich Phuong) — tu xu ly SP, khong can to SP
+        sp, sp_warn = None, "leader_sp"
         warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{name} (LĐ) kiêm Song Phương ngày {date_str} — ghép 2 NV"})
+                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay {date_str}"})
     else:
-        leader = _pick_leader(db, pool["LD"], requests, year, date_str, ld_role)
-        if not leader:
-            warnings.append({"date": date_str, "type": "no_leader",
-                             "msg": f"Không có Lãnh đạo khả dụng ngày {date_str}"})
+        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str)
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Không có ai tác nghiệp Song Phương ngày {date_str}"})
+                             "msg": f"Khong co ai tac nghiep Song Phuong ngay {date_str}"})
+        if not leader:
+            warnings.append({"date": date_str, "type": "no_leader",
+                             "msg": f"Khong co Lanh dao kha dung ngay {date_str}"})
 
     nvs = _pick_nvs(db, pool["NV"], requests, year, date_str, nv_count, sp_warn, nv_role)
 
@@ -331,22 +307,20 @@ def _generate_cutoff(db: Session, date_str: str, year: int,
     requests = get_requests_for_date(db, date_str, year)
     warnings = []
 
-    sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, "LD_cutoff")
+    leader = _pick_leader(db, pool["LD"], requests, year, date_str, "LD_cutoff")
 
-    if sp_warn == "leader_sp":
-        leader = sp
-        sp = None
-        name = leader.full_name if leader else "?"
+    if leader and getattr(leader, "is_sp_backup", 0) == 1:
+        sp, sp_warn = None, "leader_sp"
         warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{name} (LĐ) kiêm SP ngày cutoff {date_str} — ghép 2 NV"})
+                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay cutoff {date_str}"})
     else:
-        leader = _pick_leader(db, pool["LD"], requests, year, date_str, "LD_cutoff")
-        if not leader:
-            warnings.append({"date": date_str, "type": "no_leader",
-                             "msg": f"Không có Lãnh đạo khả dụng ngày cutoff {date_str}"})
+        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str)
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Không có SP ngày cutoff {date_str}"})
+                             "msg": f"Khong co SP ngay cutoff {date_str}"})
+        if not leader:
+            warnings.append({"date": date_str, "type": "no_leader",
+                             "msg": f"Khong co Lanh dao kha dung ngay cutoff {date_str}"})
 
     nvs = _pick_nvs(db, pool["NV"], requests, year, date_str, nv_count, sp_warn, "NV_cutoff")
     shift = _build_shift(date_str, "cutoff", leader, sp, sp_warn, nvs)
@@ -370,19 +344,20 @@ def _generate_settlement(db: Session, date_str: str, year: int,
     warnings = []
 
     # ─── CA CHÍNH ────────────────────────────────────────────
-    sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, "LD")
+    leader = _pick_leader(db, pool["LD"], requests, year, date_str, "LD")
 
-    if sp_warn == "leader_sp":
-        leader = sp
-        sp = None
-        name = leader.full_name if leader else "?"
+    if leader and getattr(leader, "is_sp_backup", 0) == 1:
+        sp, sp_warn = None, "leader_sp"
         warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{name} kiêm SP ngày quyết toán {date_str} — ghép 2 NV"})
+                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay quyet toan {date_str}"})
     else:
-        leader = _pick_leader(db, pool["LD"], requests, year, date_str, "LD")
+        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str)
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Không có SP ngày quyết toán {date_str}"})
+                             "msg": f"Khong co SP ngay quyet toan {date_str}"})
+        if not leader:
+            warnings.append({"date": date_str, "type": "no_leader",
+                             "msg": f"Khong co Lanh dao kha dung ngay quyet toan {date_str}"})
 
     nvs_main = _pick_nvs(db, pool["NV"], requests, year, date_str,
                           nv_count, sp_warn, "NV")
@@ -462,6 +437,9 @@ def generate_schedule(db: Session, month: int, year: int,
         # Xác định loại ca
         sd = get_special_day(db, date_str)
         day_type = sd.day_type if sd else None
+        # Nếu special day chưa confirmed → bỏ qua đặc thù, sinh ca thường
+        if sd and not sd.is_confirmed:
+            day_type = None
 
         if day_type == "settlement":
             shifts, warns = _generate_settlement(db, date_str, year, nv_count)
@@ -547,6 +525,9 @@ def generate_schedule_for_week(db: Session, week_start_str: str,
 
         sd = get_special_day(db, date_str)
         day_type = sd.day_type if sd else None
+        # Nếu special day chưa confirmed → bỏ qua đặc thù, sinh ca thường
+        if sd and not sd.is_confirmed:
+            day_type = None
 
         if day_type == "settlement":
             shifts, warns = _generate_settlement(db, date_str, year, nv_count)

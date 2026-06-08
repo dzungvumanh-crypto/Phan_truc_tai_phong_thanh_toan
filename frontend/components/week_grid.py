@@ -27,6 +27,7 @@ def render_week_grid(
     on_edit_click=None,
     on_confirm_click=None,
     on_unconfirm_click=None,
+    highlight_staff_id=None,
 ):
     """
     Render grid 5 cột Mon-Fri từ state["schedule"] và state["current_week_start"].
@@ -39,6 +40,7 @@ def render_week_grid(
     on_edit_click: Callback (shift) -> None — hiện nút ✏️ trong compact card.
     on_confirm_click: Callback (shift) -> None — hiện nút ✅ cho ca draft.
     on_unconfirm_click: Callback (shift) -> None — hiện nút 🔄 cho ca confirmed (B5).
+    highlight_staff_id: C2 — ID nhân sự cần filter; ca có người này highlight, ca khác mờ.
     """
     week_start = state["current_week_start"]
 
@@ -64,12 +66,8 @@ def render_week_grid(
                             on_edit_click=on_edit_click,
                             on_confirm_click=on_confirm_click,
                             on_unconfirm_click=on_unconfirm_click,
+                            highlight_staff_id=highlight_staff_id,
                         )
-                        if show_warnings and shift.get("sp_warning"):
-                            warn_label, warn_color = common.SP_WARNING_LABELS.get(
-                                shift["sp_warning"], (shift["sp_warning"], "grey")
-                            )
-                            ui.badge(warn_label, color=warn_color).classes("text-xs")
                 else:
                     # N5: phân biệt ngày lễ vs chưa phân ca
                     holiday_label = state.get("holiday_map", {}).get(date_str)

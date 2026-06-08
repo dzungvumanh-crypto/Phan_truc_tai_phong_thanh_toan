@@ -115,8 +115,10 @@ def validate_request(
     year: int = CURRENT_YEAR,
     db: Session = Depends(get_db),
 ):
+    staff = get_staff_by_id(db, staff_id)
+    role = staff.role if staff else None
     allowed, msg, current, max_slots = constraint_service.validate_nv_request(
-        db, staff_id, date, year
+        db, staff_id, date, year, role=role
     )
     return RequestValidateResult(
         allowed=allowed, message=msg,
@@ -133,7 +135,7 @@ def create_request(body: RequestCreate, db: Session = Depends(get_db)):
     # N2+V2: Validate absence + slot limit cho mọi role (LD/SP/NV)
     if body.request_type == "once" and body.specific_date:
         allowed, msg, _, _ = constraint_service.validate_nv_request(
-            db, body.staff_id, body.specific_date, body.year
+            db, body.staff_id, body.specific_date, body.year, role=staff.role
         )
         if not allowed:
             raise HTTPException(400, msg)

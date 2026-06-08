@@ -722,7 +722,9 @@ def _render_tab_request(state: dict):
                 load_data()
                 render_list()
             else:
-                common.show_notify("❌ Lỗi (trùng đăng ký?)", type="negative")
+                # T5: Hiện lỗi thực tế từ backend (slot limit, ngày lễ, cuối tuần, ...)
+                err = api_client.get_last_api_error()
+                common.show_notify(f"❌ {err}" if err else "❌ Lỗi thêm đăng ký (trùng?)", type="negative", timeout=8000)
 
         with ui.row().classes("mt-3"):
             ui.button("➕ Thêm đăng ký", on_click=add_request).props("color=green-7")

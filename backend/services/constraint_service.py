@@ -99,8 +99,9 @@ def list_requests(db: Session, year: Optional[int] = None,
 
 def get_requests_for_date(db: Session, date_str: str, year: int) -> dict:
     """
-    Trả {'LD': [staff_id,...], 'SP': [...], 'NV': [...]}
+    Trả {'LD': [...], 'SP': [...], 'NV': [...], 'once_ids': set()}
     cho ngày date_str — kết hợp cả 'once' (exact date) và 'weekly' (day_of_week).
+    once_ids: tập ID đăng ký 'once' → scheduler đảm bảo xếp đúng ngày (forced).
     """
     from backend.models.duty_models import Staff
     from datetime import date
@@ -113,22 +114,26 @@ def get_requests_for_date(db: Session, date_str: str, year: int) -> dict:
     ).all()
 
     staff_ids: set = set()
+    once_staff_ids: set = set()
     for r in rows:
         if r.request_type == "once" and r.specific_date == date_str:
             staff_ids.add(r.staff_id)
+            once_staff_ids.add(r.staff_id)
         elif r.request_type == "weekly" and r.day_of_week == dow:
             staff_ids.add(r.staff_id)
 
-    result: dict = {"LD": [], "SP": [], "NV": []}
+    result: dict = {"LD": [], "SP": [], "NV": [], "once_ids": set()}
     if staff_ids:
         people = db.query(Staff).filter(Staff.id.in_(staff_ids)).all()
         for p in people:
             result[p.role].append(p.id)
+            if p.id in once_staff_ids:
+                result["once_ids"].add(p.id)
     return result
 
 
-def count_nv_requests_for_date(db: Session, date_str: str, year: int) -> int:
-    """Đếm số NV đã đăng ký xin trực ngày date_str."""
+def count_role_requests_for_date(db: Session, date_str: str, year: int, role: str) -> tuple[int, list[str]]:
+    """Đếm số người role đã đăng ký xin trực ngày date_str. Trả (count, [tên])."""
     from backend.models.duty_models import Staff
     from datetime import date
 
@@ -138,29 +143,35 @@ def count_nv_requests_for_date(db: Session, date_str: str, year: int) -> int:
         DutyRequest.year == year,
     ).all()
 
-    nv_ids: set = set()
+    staff_ids: set = set()
     for r in rows:
         if r.request_type == "once" and r.specific_date == date_str:
-            nv_ids.add(r.staff_id)
+            staff_ids.add(r.staff_id)
         elif r.request_type == "weekly" and r.day_of_week == dow:
-            nv_ids.add(r.staff_id)
+            staff_ids.add(r.staff_id)
 
-    if not nv_ids:
-        return 0
+    if not staff_ids:
+        return 0, []
 
-    from backend.models.duty_models import Staff
-    count = db.query(Staff).filter(
-        Staff.id.in_(nv_ids), Staff.role == "NV"
-    ).count()
+    members = db.query(Staff).filter(
+        Staff.id.in_(staff_ids), Staff.role == role
+    ).all()
+    return len(members), [m.full_name for m in members]
+
+
+def count_nv_requests_for_date(db: Session, date_str: str, year: int) -> int:
+    """Đếm số NV đã đăng ký xin trực ngày date_str."""
+    count, _ = count_role_requests_for_date(db, date_str, year, "NV")
     return count
 
 
 def validate_nv_request(db: Session, staff_id: int, date_str: str,
-                         year: int) -> tuple[bool, str, int, int]:
+                         year: int, role: Optional[str] = None) -> tuple[bool, str, int, int]:
     """
     Kiểm tra xem có thể đăng ký xin trực ngày date_str không.
-    Áp dụng cho mọi role: kiểm tra vắng mặt trước.
-    Giới hạn slot chỉ áp dụng cho NV: số đăng ký NV ≤ nv_count.
+    - Mọi role: kiểm tra vắng mặt trước.
+    - LD/SP: tối đa 1 người/ngày (1 slot/ca).
+    - NV: số đăng ký ≤ nv_count.
     Trả (allowed, message, current_count, max_slots).
     """
     # V2: Kiểm tra vắng mặt trước — áp dụng cho mọi role
@@ -169,26 +180,28 @@ def validate_nv_request(db: Session, staff_id: int, date_str: str,
     if staff_id in absent_ids:
         return False, f"Nhân sự đã khai báo vắng ngày {date_str}", 0, 0
 
+    # N2: Slot limit theo role
+    if role in ("LD", "SP"):
+        current, names = count_role_requests_for_date(db, date_str, year, role)
+        # Lọc bỏ chính người đang đăng ký (trường hợp update)
+        from backend.models.duty_models import Staff
+        self_staff = db.query(Staff).filter_by(id=staff_id).first()
+        self_name = self_staff.full_name if self_staff else ""
+        names_others = [n for n in names if n != self_name]
+        if names_others:
+            role_label = "Lãnh đạo" if role == "LD" else "Song Phương"
+            msg = f"Đã có {role_label} đăng ký ngày này: {', '.join(names_others)}."
+            return False, msg, len(names_others), 1
+        return True, "OK", 0, 1
+
+    # NV: slot limit theo nv_count
     config = get_shift_config(db, year)
     max_slots = config.nv_count if config else DEFAULT_NV_COUNT
 
     current = count_nv_requests_for_date(db, date_str, year)
     if current >= max_slots:
-        from backend.models.duty_models import Staff
-        existing_requesters = []
-        from datetime import date
-        dow = date.fromisoformat(date_str).weekday()
-        rows = db.query(DutyRequest).filter(
-            DutyRequest.is_active == 1, DutyRequest.year == year
-        ).all()
-        for r in rows:
-            if (r.request_type == "once" and r.specific_date == date_str) or \
-               (r.request_type == "weekly" and r.day_of_week == dow):
-                s = db.query(Staff).filter_by(id=r.staff_id, role="NV").first()
-                if s:
-                    existing_requesters.append(s.full_name)
-
-        names = ", ".join(existing_requesters) if existing_requesters else "..."
+        _, nv_names = count_role_requests_for_date(db, date_str, year, "NV")
+        names = ", ".join(nv_names) if nv_names else "..."
         msg = f"Đã có {current} người đăng ký NV: {names}. Đề nghị chọn ngày khác."
         return False, msg, current, max_slots
 
@@ -210,12 +223,18 @@ def create_request(db: Session, staff_id: int, request_type: str,
     if existing:
         return existing
 
-    # N7: Từ chối đăng ký T7/CN (ngày không bao giờ có ca)
+    # N7: Từ chối đăng ký T7/CN và ngày lễ (ngày không bao giờ có ca)
     if request_type == "once" and specific_date:
         from datetime import date as _date
         d = _date.fromisoformat(specific_date)
         if d.weekday() >= 5:
             raise ValueError(f"Không thể đăng ký cuối tuần ({specific_date})")
+        holiday = db.query(SpecialDay).filter_by(
+            date=specific_date, day_type="holiday"
+        ).first()
+        if holiday:
+            label = f" ({holiday.label})" if holiday.label else ""
+            raise ValueError(f"Không thể đăng ký ngày lễ{label} ({specific_date})")
 
     obj = DutyRequest(
         staff_id=staff_id,

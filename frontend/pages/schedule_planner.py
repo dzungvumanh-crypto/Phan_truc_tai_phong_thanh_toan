@@ -16,6 +16,7 @@ from frontend.components.week_grid import render_week_grid
 def schedule_planner_page():
     """Tab Phân lịch."""
 
+    all_staff = api_client.get_staff() or []
     state = {
         "current_week_start": _get_monday_of_week(datetime.now()),
         "schedule": [],
@@ -23,6 +24,8 @@ def schedule_planner_page():
             h["date"]: (h.get("label") or "Ngày lễ")
             for h in (api_client.get_special_days(day_type="holiday") or [])
         },
+        "highlight_staff_id": None,   # C2: ID nhân sự đang filter (None = tất cả)
+        "all_staff": all_staff,
     }
 
     def load_week():
@@ -95,6 +98,23 @@ def schedule_planner_page():
                 on_click=lambda: _delete_week(state),
             ).props("outline color=red")
 
+        # ── C2: Filter theo người ────
+        with ui.row().classes("items-center gap-3 mb-3"):
+            ui.label("👤 Lọc ca của:").classes("text-body2 text-grey-7")
+            staff_options = {None: "— Tất cả —"}
+            staff_options.update({
+                s["id"]: s["full_name"]
+                for s in state["all_staff"]
+            })
+            filter_select = ui.select(
+                options=staff_options,
+                value=None,
+                on_change=lambda e: (
+                    state.update({"highlight_staff_id": e.value}),
+                    refresh_week(),
+                ),
+            ).classes("w-52").props("dense clearable")
+
         # ── Week grid container — created before refresh_week is defined ────
         week_container = ui.column().classes("w-full")
         with week_container:
@@ -103,6 +123,7 @@ def schedule_planner_page():
                 on_edit_click=lambda s: _open_edit_dialog(s, state),
                 on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
                 on_unconfirm_click=lambda s: _unconfirm_single_shift(s["id"], state),
+                highlight_staff_id=state.get("highlight_staff_id"),
             )
 
     # ── refresh_week defined after week_container and week_label exist ────
@@ -119,6 +140,7 @@ def schedule_planner_page():
                 on_edit_click=lambda s: _open_edit_dialog(s, state),
                 on_confirm_click=lambda s: _confirm_single_shift(s["id"], state),
                 on_unconfirm_click=lambda s: _unconfirm_single_shift(s["id"], state),
+                highlight_staff_id=state.get("highlight_staff_id"),
             )
 
     state["refresh"] = refresh_week
@@ -202,7 +224,8 @@ def _generate_week(state: dict):
                     if state.get("refresh"):
                         state["refresh"]()
                 else:
-                    common.show_notify("Lỗi phân lịch tuần", type="negative")
+                    err = api_client.get_last_api_error()
+                    common.show_notify(f"❌ {err}" if err else "❌ Lỗi phân lịch tuần", type="negative")
 
             ui.button("Phân lịch", on_click=do_gen).props("color=primary")
 
@@ -249,7 +272,8 @@ def _do_delete_week(state: dict):
         if state.get("refresh"):
             state["refresh"]()
     else:
-        common.show_notify("Lỗi xóa ca tuần", type="negative")
+        err = api_client.get_last_api_error()
+        common.show_notify(f"❌ {err}" if err else "❌ Lỗi xóa ca tuần", type="negative")
 
 
 def _open_edit_dialog(shift: dict, state: dict):
@@ -308,7 +332,8 @@ def _open_edit_dialog(shift: dict, state: dict):
                     if state.get("refresh"):
                         state["refresh"]()
                 else:
-                    common.show_notify("Lỗi cập nhật ca", type="negative")
+                    err = api_client.get_last_api_error()
+                    common.show_notify(f"❌ {err}" if err else "❌ Lỗi cập nhật ca", type="negative")
 
             ui.button("Lưu", on_click=save).props("color=primary")
 
@@ -323,7 +348,8 @@ def _confirm_single_shift(shift_id: int, state: dict):
         if state.get("refresh"):
             state["refresh"]()
     else:
-        common.show_notify("Lỗi xác nhận ca", type="negative")
+        err = api_client.get_last_api_error()
+        common.show_notify(f"❌ {err}" if err else "❌ Lỗi xác nhận ca", type="negative")
 
 
 def _unconfirm_single_shift(shift_id: int, state: dict):
@@ -335,7 +361,8 @@ def _unconfirm_single_shift(shift_id: int, state: dict):
             if state.get("refresh"):
                 state["refresh"]()
         else:
-            common.show_notify("Lỗi hủy xác nhận ca", type="negative")
+            err = api_client.get_last_api_error()
+            common.show_notify(f"❌ {err}" if err else "❌ Lỗi hủy xác nhận ca", type="negative")
 
     common.confirm_dialog(
         "Hủy xác nhận ca này? Ca sẽ trở về trạng thái Nháp.",
@@ -396,8 +423,9 @@ def _generate_month(state: dict):
                 if state.get("refresh"):
                     state["refresh"]()
             else:
-                result_label.set_text("❌ Có lỗi xảy ra")
-                common.show_notify("Lỗi phân lịch tháng", type="negative")
+                err = api_client.get_last_api_error()
+                result_label.set_text(f"❌ {err}" if err else "❌ Có lỗi xảy ra")
+                common.show_notify(f"❌ {err}" if err else "❌ Lỗi phân lịch tháng", type="negative")
 
         with ui.row().classes("justify-end gap-2 mt-4"):
             ui.button("Hủy", on_click=dlg.close).props("flat")
