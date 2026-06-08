@@ -62,7 +62,7 @@ def _preferred_day_mismatch(last_used: Optional[str], current_date: Optional[str
     Trả 5 nếu thiếu dữ liệu (last_used hoặc current_date là None).
     """
     if not last_used or not current_date:
-        return 5
+        return 0   # chưa trực role này bao giờ → ưu tiên cao nhất
     try:
         last_wd = datetime.strptime(last_used, "%Y-%m-%d").weekday()   # 0=Mon..4=Fri
         curr_wd = datetime.strptime(current_date, "%Y-%m-%d").weekday()
