@@ -33,3 +33,9 @@ Thumbs.db
 
 # NiceGUI cache
 .nicegui/
+
+# packages/ duoc INCLUDE de cai offline — khong gitignore o day
+# venv/ da duoc loai tru o tren (venv/)
+
+# Test / debug scripts output
+reset_test_data.py

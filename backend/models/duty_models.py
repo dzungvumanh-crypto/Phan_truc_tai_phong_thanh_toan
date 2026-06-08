@@ -179,5 +179,5 @@ class ShiftConfig(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     year         = Column(Integer, unique=True, nullable=False)
-    nv_count     = Column(Integer, default=1)    # số NV mặc định mỗi ca
+    nv_count     = Column(Integer, default=2)    # tổng NV mỗi ca (gồm người xử lý SP)
     signer_name  = Column(String(100), nullable=True)  # N1: tên người ký file Excel

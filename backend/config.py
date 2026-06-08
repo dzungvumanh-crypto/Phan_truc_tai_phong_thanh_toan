@@ -19,5 +19,5 @@ CURRENT_YEAR: int = datetime.now().year
 # Tên 2 lãnh đạo có thể kiêm nhiệm SP khi thiếu
 SP_BACKUP_LEADERS = {"Trần Thị Mỹ Linh", "Trần Thị Bích Phương"}
 
-# Số NV mặc định mỗi ca (có thể override qua shift_config)
-DEFAULT_NV_COUNT = 1
+# Tổng NV mỗi ca = 2 (gồm người xử lý SP) — bắt buộc 1 LĐ + 2 NV
+DEFAULT_NV_COUNT = 2

@@ -1,0 +1,60 @@
+====================================================
+  PHAN LICH TRUC - PHONG THANH TOAN AGRIBANK TTTT
+  Huong dan cai dat va su dung
+====================================================
+
+YEU CAU HE THONG
+----------------
+- Windows 10/11 (64-bit)
+- Python 3.11  (download tai https://www.python.org/downloads/release/python-3110/)
+
+LUU Y QUAN TRONG KHI CAI PYTHON:
+  Trong man hinh cai dat Python, PHAI tich chon:
+    [x] Add Python to PATH
+    [x] Install for all users  (khuyen nghi)
+
+
+CAI DAT LAN DAU (chi can lam 1 lan)
+-------------------------------------
+1. Cai Python 3.11 nhu huong dan o tren
+
+2. Sao chep thu muc chuong trinh vao may tinh
+   (vi du: C:\PhanLichTruc\)
+
+3. Nhan dup-click vao file  start.bat
+   - Lan dau chay se tu dong tao moi truong ao (venv)
+     va cai cac thu vien can thiet tu thu muc packages/
+     (KHONG CAN INTERNET)
+   - Qua trinh nay mat khoang 1-2 phut
+
+4. Sau khi cai dat xong, trinh duyet se tu dong mo
+   Giao dien tai: http://localhost:8081
+
+
+SU DUNG HANG NGAY
+------------------
+- Nhan dup-click vao  start.bat
+- Cho den khi trinh duyet tu dong mo
+- De tat: nhan Enter trong cua so "Phan lich truc"
+
+
+CAU TRUC THU MUC
+-----------------
+  start.bat          <- FILE CHAY CHINH
+  launcher.py        <- Script khoi dong
+  packages/          <- Thu vien Python (cai offline)
+  venv/              <- Moi truong ao (tu dong tao khi chay lan dau)
+  database/          <- Co so du lieu SQLite
+  backend/           <- FastAPI server (port 8001)
+  frontend/          <- NiceGUI UI (port 8081)
+
+
+XU LY SU CO
+-----------
+- Neu bao loi "Python not found": Kiem tra lai da cai Python
+  va co chon "Add to PATH" chua
+- Neu trinh duyet khong tu mo: Mo thu cong tai http://localhost:8081
+- Neu co loi khac: Xem chi tiet trong cua so Backend/Frontend
+
+
+====================================================

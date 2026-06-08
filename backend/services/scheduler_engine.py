@@ -239,6 +239,20 @@ def _pick_nvs(db: Session, pool_nv: List[Staff], requests: dict,
     return selected
 
 
+def _pick_nvs_prefer_non_sp(db: Session, pool_nv: List[Staff], requests: dict,
+                            year: int, date_str: str,
+                            n_slots: int, nv_role: str) -> List[Staff]:
+    """
+    Chọn n_slots NV, ưu tiên người không có can_do_sp.
+    Tránh để 2 người SP-capable trong cùng 1 ca khi còn đủ NV thường.
+    Fallback sang toàn bộ pool nếu NV thường không đủ.
+    """
+    non_sp = [p for p in pool_nv if not getattr(p, 'can_do_sp', 0)]
+    if len(non_sp) >= n_slots:
+        return _pick_nvs(db, non_sp, requests, year, date_str, n_slots, nv_role)
+    return _pick_nvs(db, pool_nv, requests, year, date_str, n_slots, nv_role)
+
+
 # ══════════════════════════════════════════════════════════════
 # BUILD SHIFT DICT
 # ══════════════════════════════════════════════════════════════
@@ -285,12 +299,20 @@ def _generate_normal_or_friday(db: Session, date_str: str, year: int,
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay {date_str}"})
 
-    need_extra = sp_warn is not None
+    # SP chiếm 1 trong nv_count slot — còn lại (nv_count-1) là NV thường
+    # LD kiêm hoặc không có SP → lấy đủ nv_count NV thường
     sp_id = sp.id if sp else None
     nv_pool = [p for p in pool["NV"] if p.id != sp_id]
-    nvs = _pick_nvs(db, nv_pool, requests, year, date_str,
-                    nv_count + (1 if need_extra else 0), nv_role)
-    all_nvs = ([sp] + nvs) if sp else nvs
+    if sp:
+        # Slot còn lại ưu tiên NV không can_do_sp — tránh 2 SP-capable cùng ca
+        nvs = _pick_nvs_prefer_non_sp(db, nv_pool, requests, year, date_str,
+                                      max(0, nv_count - 1), nv_role)
+        all_nvs = [sp] + nvs
+    else:
+        # LD kiêm / không có SP: tất cả slot ưu tiên NV thường
+        nvs = _pick_nvs_prefer_non_sp(db, nv_pool, requests, year, date_str,
+                                      nv_count, nv_role)
+        all_nvs = nvs
 
     shift = _build_shift(date_str, shift_type, leader, all_nvs)
     return [shift], warnings
@@ -318,12 +340,16 @@ def _generate_cutoff(db: Session, date_str: str, year: int,
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay cutoff {date_str}"})
 
-    need_extra = sp_warn is not None
     sp_id = sp.id if sp else None
     nv_pool = [p for p in pool["NV"] if p.id != sp_id]
-    nvs = _pick_nvs(db, nv_pool, requests, year, date_str,
-                    nv_count + (1 if need_extra else 0), "NV_cutoff")
-    all_nvs = ([sp] + nvs) if sp else nvs
+    if sp:
+        nvs = _pick_nvs_prefer_non_sp(db, nv_pool, requests, year, date_str,
+                                      max(0, nv_count - 1), "NV_cutoff")
+        all_nvs = [sp] + nvs
+    else:
+        nvs = _pick_nvs_prefer_non_sp(db, nv_pool, requests, year, date_str,
+                                      nv_count, "NV_cutoff")
+        all_nvs = nvs
     shift = _build_shift(date_str, "cutoff", leader, all_nvs)
     return [shift], warnings
 
@@ -355,12 +381,16 @@ def _generate_settlement(db: Session, date_str: str, year: int,
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay quyet toan {date_str}"})
 
-    need_extra = sp_warn is not None
     sp_id = sp.id if sp else None
     nv_pool_main = [p for p in pool["NV"] if p.id != sp_id]
-    nvs_picked = _pick_nvs(db, nv_pool_main, requests, year, date_str,
-                            nv_count + (1 if need_extra else 0), "NV")
-    nvs_main = ([sp] + nvs_picked) if sp else nvs_picked
+    if sp:
+        nvs_picked = _pick_nvs_prefer_non_sp(db, nv_pool_main, requests, year, date_str,
+                                              max(0, nv_count - 1), "NV")
+        nvs_main = [sp] + nvs_picked
+    else:
+        nvs_picked = _pick_nvs_prefer_non_sp(db, nv_pool_main, requests, year, date_str,
+                                              nv_count, "NV")
+        nvs_main = nvs_picked
     shift_main = _build_shift(date_str, "settlement_main", leader, nvs_main)
 
     # ─── CA PHỤ ──────────────────────────────────────────────
