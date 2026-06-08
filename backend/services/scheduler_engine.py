@@ -279,13 +279,8 @@ def _generate_normal_or_friday(db: Session, date_str: str, year: int,
 
     if leader and getattr(leader, "is_sp_backup", 0) == 1:
         sp, sp_warn = None, "leader_sp"
-        warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay {date_str}"})
     else:
         sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role=nv_role)
-        if sp_warn == "no_sp":
-            warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Khong co ai tac nghiep Song Phuong ngay {date_str}"})
         if not leader:
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay {date_str}"})
@@ -317,13 +312,8 @@ def _generate_cutoff(db: Session, date_str: str, year: int,
 
     if leader and getattr(leader, "is_sp_backup", 0) == 1:
         sp, sp_warn = None, "leader_sp"
-        warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay cutoff {date_str}"})
     else:
         sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role="NV_cutoff")
-        if sp_warn == "no_sp":
-            warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Khong co ai tac nghiep Song Phuong ngay cutoff {date_str}"})
         if not leader:
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay cutoff {date_str}"})
@@ -359,13 +349,8 @@ def _generate_settlement(db: Session, date_str: str, year: int,
 
     if leader and getattr(leader, "is_sp_backup", 0) == 1:
         sp, sp_warn = None, "leader_sp"
-        warnings.append({"date": date_str, "type": "leader_sp",
-                         "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay quyet toan {date_str}"})
     else:
         sp, sp_warn = _pick_sp(db, pool, requests, year, date_str)
-        if sp_warn == "no_sp":
-            warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Khong co ai tac nghiep Song Phuong ngay quyet toan {date_str}"})
         if not leader:
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay quyet toan {date_str}"})
