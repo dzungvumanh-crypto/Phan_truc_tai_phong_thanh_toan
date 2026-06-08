@@ -40,7 +40,7 @@ def get_absent_staff_ids(db: Session, date_str: str) -> set:
 
 _ROLE_MAP = {
     "LD": ["LD", "LD_friday", "LD_cutoff"],
-    "SP": ["SP"],
+    "SP": ["SP", "SP_friday", "SP_cutoff"],
     "NV": ["NV", "NV_friday", "NV_cutoff"],
 }
 
