@@ -225,8 +225,7 @@ def create_request(db: Session, staff_id: int, request_type: str,
 
     # N7: Từ chối đăng ký T7/CN và ngày lễ (ngày không bao giờ có ca)
     if request_type == "once" and specific_date:
-        from datetime import date as _date
-        d = _date.fromisoformat(specific_date)
+        d = date.fromisoformat(specific_date)
         if d.weekday() >= 5:
             raise ValueError(f"Không thể đăng ký cuối tuần ({specific_date})")
         holiday = db.query(SpecialDay).filter_by(

@@ -717,7 +717,7 @@ def _render_tab_request(state: dict):
             if result:
                 common.show_notify("✅ Đã thêm đăng ký", type="positive")
                 staff_sel.set_value(None)
-                req_state.update({"form_staff_id": None, "form_date": ""})
+                req_state.update({"form_staff_id": None, "form_date": "", "form_dow": 0})
                 render_form_detail()  # Reset form detail
                 load_data()
                 render_list()

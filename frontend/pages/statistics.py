@@ -335,7 +335,6 @@ def _render_rotation_table(state: dict):
 
     for item in sorted_data:
         staff_name = item.get("staff_name", "—")
-        role = item.get("role", "")
         rotation_role = item.get("role", "")
         shift_count = item.get("shift_count", 0)
         last_used = item.get("last_used") or "—"

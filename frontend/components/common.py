@@ -68,51 +68,6 @@ def confirm_dialog(message: str, on_confirm, confirm_label: str = "Xác nhận",
     dialog.open()
 
 
-# ── Loading + feedback wrapper ────────────────────────────────────────────────
-def run_with_feedback(action_fn, loading_msg: str = "Đang xử lý...",
-                      success_msg: str = "Thành công",
-                      error_msg: str = "Có lỗi xảy ra",
-                      on_success=None):
-    """
-    C5: Chạy action_fn() với spinner, sau đó notify kết quả.
-    Dùng cho generate, confirm, delete week.
-    """
-    notif = ui.notify(loading_msg, type="ongoing", spinner=True, timeout=0)
-    try:
-        result = action_fn()
-        notif.dismiss()
-        if result is not False and result is not None:
-            show_notify(f"✅ {success_msg}", type="positive")
-            if on_success:
-                on_success(result)
-        else:
-            show_notify(f"❌ {error_msg}", type="negative")
-        return result
-    except Exception as e:
-        notif.dismiss()
-        show_notify(f"❌ {error_msg}: {e}", type="negative")
-        return None
-
-
-# ── Badges ────────────────────────────────────────────────────────────────────
-def role_badge(role: str):
-    label = ROLE_LABELS.get(role, role)
-    color = ROLE_COLORS.get(role, "grey")
-    ui.badge(label, color=color).classes("text-xs")
-
-
-def shift_type_badge(shift_type: str):
-    label, color = SHIFT_TYPE_LABELS.get(shift_type, (shift_type, "grey"))
-    ui.badge(label, color=color).classes("text-xs")
-
-
-def sp_warning_badge(warning: str | None):
-    if not warning:
-        return
-    label, color = SP_WARNING_LABELS.get(warning, (warning, "grey"))
-    ui.badge(label, color=color).classes("text-xs")
-
-
 # ── Section title ─────────────────────────────────────────────────────────────
 def section_title(text: str, icon: str = ""):
     with ui.row().classes("items-center gap-2 mb-2"):
