@@ -40,7 +40,6 @@ def get_absent_staff_ids(db: Session, date_str: str) -> set:
 
 _ROLE_MAP = {
     "LD": ["LD", "LD_friday", "LD_cutoff"],
-    "SP": ["SP", "SP_friday", "SP_cutoff"],
     "NV": ["NV", "NV_friday", "NV_cutoff"],
 }
 
@@ -70,6 +69,7 @@ def create_staff(db: Session, full_name: str, role: str,
 def update_staff(db: Session, staff_id: int, full_name: Optional[str] = None,
                  role: Optional[str] = None, is_on_project: Optional[bool] = None,
                  is_sp_backup: Optional[int] = None,
+                 can_do_sp: Optional[int] = None,
                  display_order: Optional[int] = None) -> Optional[Staff]:
     s = get_staff_by_id(db, staff_id)
     if not s:
@@ -101,6 +101,8 @@ def update_staff(db: Session, staff_id: int, full_name: Optional[str] = None,
         s.is_on_project = 1 if is_on_project else 0
     if is_sp_backup is not None:   # T3
         s.is_sp_backup = is_sp_backup
+    if can_do_sp is not None:
+        s.can_do_sp = can_do_sp
     if display_order is not None:
         s.display_order = display_order
     db.commit()
@@ -145,4 +147,6 @@ def get_available_pool(db: Session, date_str: str) -> dict:
         if person.id in absent_ids:
             continue
         pool[person.role].append(person)
+    # SP pool = NV có can_do_sp=1 (dùng nội bộ bởi scheduler để chọn người xử lý Song Phương)
+    pool["SP"] = [p for p in pool["NV"] if getattr(p, "can_do_sp", 0) == 1]
     return pool

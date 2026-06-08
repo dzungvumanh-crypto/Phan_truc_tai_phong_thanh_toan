@@ -3,7 +3,7 @@ statistics.py — Tab Thống kê (/thong-ke).
 
 3 section:
   1. Thống kê số ca từng người (breakdown by type) — theo năm
-  2. Tóm tắt tháng (total_shifts, sp_warnings, by_type)
+  2. Tóm tắt tháng (total_shifts, by_type)
   3. Trạng thái vòng xoay (rotation_state) — lọc theo role
 """
 import sys
@@ -16,14 +16,13 @@ from frontend import api_client
 from frontend.components import common
 
 
-# Thứ tự hiển thị role: LD → SP → NV
-_ROLE_ORDER = {"LD": 0, "SP": 1, "NV": 2}
+# Thứ tự hiển thị role: LD → NV
+_ROLE_ORDER = {"LD": 0, "NV": 1}
 
 # Nhãn các loại vòng xoay
 _ROTATION_ROLE_OPTIONS = {
     None:         "Tất cả",
     "LD":         "LD",
-    "SP":         "SP",
     "NV":         "NV",
     "LD_friday":  "LD Thứ 6",
     "NV_friday":  "NV Thứ 6",
@@ -162,7 +161,7 @@ def statistics_page():
 # ── Section 1 helpers ──────────────────────────────────────────────────────────
 
 # Màu theo role cho bar chart
-_ROLE_COLORS_CHART = {"LD": "#1976D2", "SP": "#7B1FA2", "NV": "#388E3C"}
+_ROLE_COLORS_CHART = {"LD": "#1976D2", "NV": "#388E3C"}
 
 
 def _render_shift_count_chart(state: dict):
@@ -266,7 +265,7 @@ def _render_shift_count_table(state: dict):
 # ── Section 2 helpers ──────────────────────────────────────────────────────────
 
 def _render_monthly_summary(state: dict):
-    """Tóm tắt tháng: tổng ca, cảnh báo SP, breakdown theo loại."""
+    """Tóm tắt tháng: tổng ca, breakdown theo loại."""
     summary = state.get("monthly_summary")
 
     if not summary:
@@ -276,7 +275,6 @@ def _render_monthly_summary(state: dict):
     month = summary.get("month", state["month"])
     year = summary.get("year", state["year"])
     total_shifts = summary.get("total_shifts", 0)
-    sp_warnings = summary.get("sp_warnings", 0)
     by_type: dict = summary.get("by_type", {})
 
     with ui.row().classes("gap-4 flex-wrap"):
@@ -285,14 +283,6 @@ def _render_monthly_summary(state: dict):
             ui.label("Tổng số ca").classes("text-body2 text-grey-7")
             ui.label(str(total_shifts)).classes("text-h4 font-bold text-blue-8")
             ui.label(f"Tháng {month}/{year}").classes("text-xs text-grey-6")
-
-        # SP warnings card
-        warn_bg = "bg-red-1" if sp_warnings > 0 else "bg-green-1"
-        warn_color = "text-red-7" if sp_warnings > 0 else "text-green-7"
-        with ui.card().classes(f"p-4 {warn_bg} min-w-[140px] text-center"):
-            ui.label("Cảnh báo SP").classes("text-body2 text-grey-7")
-            ui.label(str(sp_warnings)).classes(f"text-h4 font-bold {warn_color}")
-            ui.label("leader_sp / no_sp").classes("text-xs text-grey-6")
 
     # Breakdown by type
     if by_type:
@@ -355,7 +345,6 @@ def _render_rotation_table(state: dict):
             # Loại vòng xoay
             rotation_labels = {
                 "LD":         ("LĐ thường",   "blue-7"),
-                "SP":         ("SP thường",   "purple-7"),
                 "NV":         ("NV thường",   "green-7"),
                 "LD_friday":  ("LĐ Thứ 6",    "orange-7"),
                 "NV_friday":  ("NV Thứ 6",    "orange-5"),

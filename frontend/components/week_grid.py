@@ -36,7 +36,7 @@ def render_week_grid(
       - current_week_start: datetime
       - schedule: List[dict] của shifts
 
-    show_warnings: Hiển thị sp_warning badge dưới mỗi shift card.
+    show_warnings: Hiển thị warning badge dưới mỗi shift card.
     on_edit_click: Callback (shift) -> None — hiện nút ✏️ trong compact card.
     on_confirm_click: Callback (shift) -> None — hiện nút ✅ cho ca draft.
     on_unconfirm_click: Callback (shift) -> None — hiện nút 🔄 cho ca confirmed (B5).

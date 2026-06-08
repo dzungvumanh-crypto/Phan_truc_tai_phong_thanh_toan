@@ -4,8 +4,8 @@ Common UI components và constants cho frontend.
 from nicegui import ui
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-ROLE_LABELS = {"LD": "Lãnh đạo", "SP": "Song Phương", "NV": "Nhân viên"}
-ROLE_COLORS = {"LD": "blue-7", "SP": "purple-7", "NV": "green-7"}
+ROLE_LABELS = {"LD": "Lãnh đạo", "NV": "Nhân viên"}
+ROLE_COLORS = {"LD": "blue-7", "NV": "green-7"}
 
 SHIFT_TYPE_LABELS = {
     "normal": ("Ca thường", "grey-7"),
@@ -13,11 +13,6 @@ SHIFT_TYPE_LABELS = {
     "cutoff": ("Cut-off", "red-7"),
     "settlement_main": ("Quyết toán chính", "deep-purple-7"),
     "settlement_sub": ("Quyết toán phụ", "deep-purple-4"),
-}
-
-SP_WARNING_LABELS = {
-    "leader_sp": ("⚠️ LĐ kiêm SP", "orange"),
-    "no_sp": ("🔴 Thiếu SP", "red"),
 }
 
 DOW_LABELS = {0: "Thứ 2", 1: "Thứ 3", 2: "Thứ 4", 3: "Thứ 5", 4: "Thứ 6"}

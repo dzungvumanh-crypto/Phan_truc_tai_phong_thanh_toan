@@ -30,12 +30,12 @@ _STAFF_SEED = [
     ("Vũ Văn Ngân",          "LD", 1, 14),   # đi dự án
     ("Nguyễn Thị Hiền",      "LD", 1, 15),   # đi dự án
     ("Lê Thị Thu Hằng",      "LD", 1, 16),   # đi dự án
-    # ── Song Phương (SP) ────────────────────────────────────
-    ("Đoàn Thị Huyền Trang", "SP", 0, 20),
-    ("Từ Diệu Hương",         "SP", 0, 21),
-    ("Đặng Thị Hương Ly",    "SP", 0, 22),
-    ("Tạ Thị Thúy Hà",       "SP", 0, 23),
-    ("Nguyễn Thị Ngọc Hà",  "SP", 1, 24),   # đi dự án
+    # ── NV xử lý được Song Phương (can_do_sp=1, seed bởi startup_init) ────────
+    ("Đoàn Thị Huyền Trang", "NV", 0, 20),
+    ("Từ Diệu Hương",         "NV", 0, 21),
+    ("Đặng Thị Hương Ly",    "NV", 0, 22),
+    ("Tạ Thị Thúy Hà",       "NV", 0, 23),
+    ("Nguyễn Thị Ngọc Hà",  "NV", 1, 24),   # đi dự án
     # ── Nhân viên (NV) ──────────────────────────────────────
     ("Nguyễn Thị Phương",    "NV", 0, 30),
     ("Tô Phương Thảo",        "NV", 0, 31),
@@ -81,6 +81,12 @@ def seed_holidays(db: Session, year: int) -> None:
     db.commit()
 
 
+_SP_CAPABLE_NAMES = {
+    "Đoàn Thị Huyền Trang", "Từ Diệu Hương",
+    "Đặng Thị Hương Ly", "Tạ Thị Thúy Hà", "Nguyễn Thị Ngọc Hà",
+}
+
+
 def startup_init(db: Session) -> None:
     """
     Khởi tạo dữ liệu khi backend start.
@@ -89,18 +95,65 @@ def startup_init(db: Session) -> None:
     3. Seed ngày nghỉ lễ
     4. Init rotation state
     5. Seed is_sp_backup cho LD backup (T3)
+    6. Migrate SP role → NV + can_do_sp=1 (idempotent)
+    7. Migrate DutyShift.sp_id → nv_ids (idempotent)
     """
     from backend.config import SP_BACKUP_LEADERS
     year = CURRENT_YEAR
     seed_staff(db)
     upsert_shift_config(db, year, DEFAULT_NV_COUNT)
     seed_holidays(db, year)
+
+    # Bước 6: Migrate SP role → NV + can_do_sp=1 (idempotent)
+    for name in _SP_CAPABLE_NAMES:
+        s = db.query(Staff).filter_by(full_name=name).first()
+        if not s:
+            continue
+        if not s.can_do_sp:
+            s.can_do_sp = 1
+        if s.role == "SP":
+            s.role = "NV"
+            # Xóa SP rotation cũ
+            db.query(RotationState).filter(
+                RotationState.staff_id == s.id,
+                RotationState.role.in_(["SP", "SP_friday", "SP_cutoff"])
+            ).delete(synchronize_session=False)
+            # Tạo NV rotation nếu chưa có
+            pos = s.display_order * 10 + s.id
+            for rr in ["NV", "NV_friday", "NV_cutoff"]:
+                if not db.query(RotationState).filter_by(
+                    year=year, role=rr, staff_id=s.id
+                ).first():
+                    db.add(RotationState(
+                        year=year, role=rr, staff_id=s.id,
+                        shift_count=0, last_used=None, position=pos,
+                    ))
+    db.flush()
+
     init_rotation_for_year(db, year)
+
     # T3: Đảm bảo LD backup có is_sp_backup=1 (idempotent)
     for name in SP_BACKUP_LEADERS:
         s = db.query(Staff).filter_by(full_name=name).first()
         if s and not s.is_sp_backup:
             s.is_sp_backup = 1
+
+    # Bước 7: Migrate DutyShift.sp_id → nv_ids (idempotent)
+    shifts_with_sp = db.query(DutyShift).filter(DutyShift.sp_id.isnot(None)).all()
+    for shift in shifts_with_sp:
+        import json as _json
+        nv_list = _json.loads(shift.nv_ids or "[]")
+        if shift.sp_id not in nv_list:
+            nv_list.insert(0, shift.sp_id)
+            shift.nv_ids = _json.dumps(nv_list)
+            shift.nv_count = len(nv_list)
+            if not db.query(DutyShiftNV).filter_by(
+                shift_id=shift.id, staff_id=shift.sp_id
+            ).first():
+                db.add(DutyShiftNV(shift_id=shift.id, staff_id=shift.sp_id, slot_index=0))
+        shift.sp_id = None
+        shift.sp_warning = None
+
     db.commit()
 
 
@@ -129,8 +182,6 @@ def _enrich_shift(db: Session, shift: DutyShift) -> dict:
         "shift_date": shift.shift_date,
         "shift_type": shift.shift_type,
         "leader": staff_dict(shift.leader),
-        "sp": staff_dict(shift.sp),
-        "sp_warning": shift.sp_warning,
         "nvs": nvs,
         "nv_count": shift.nv_count,
         "is_auto": bool(shift.is_auto),
@@ -175,31 +226,21 @@ def delete_shifts_for_week(db: Session, week_start_str: str) -> int:
 
 
 def update_shift(db: Session, shift_id: int, leader_id: Optional[int],
-                 sp_id: Optional[int], nv_ids: List[int],
-                 sp_warning: Optional[str] = None,
-                 clear_sp: bool = False) -> Optional[dict]:
+                 nv_ids: List[int]) -> Optional[dict]:
     shift = db.query(DutyShift).filter_by(id=shift_id).first()
     if not shift:
         return None
 
     if leader_id is not None:
         shift.leader_id = leader_id
-    # V1: clear_sp=True xóa SP về NULL; sp_id=None riêng không đủ để phân biệt "không truyền" vs "xóa"
-    if clear_sp:
-        shift.sp_id = None
-    elif sp_id is not None:
-        shift.sp_id = sp_id
-    if sp_warning is not None:
-        shift.sp_warning = sp_warning
     if nv_ids is not None:
         shift.nv_ids = json.dumps(nv_ids)
         shift.nv_count = len(nv_ids)
-        # Cập nhật bảng phụ
         db.query(DutyShiftNV).filter_by(shift_id=shift_id).delete()
         for idx, nv_id in enumerate(nv_ids):
             db.add(DutyShiftNV(shift_id=shift_id, staff_id=nv_id, slot_index=idx))
 
-    shift.is_auto = 0   # đánh dấu đã sửa tay
+    shift.is_auto = 0
     db.commit()
     db.refresh(shift)
     return _enrich_shift(db, shift)
@@ -305,11 +346,7 @@ def get_shift_count_by_person(db: Session, year: int) -> List[dict]:
         if shift.leader_id and shift.leader_id in counts:
             counts[shift.leader_id][shift.shift_type] = \
                 counts[shift.leader_id].get(shift.shift_type, 0) + 1
-        # SP
-        if shift.sp_id and shift.sp_id in counts:
-            counts[shift.sp_id][shift.shift_type] = \
-                counts[shift.sp_id].get(shift.shift_type, 0) + 1
-        # NV
+        # NV (kể cả người xử lý SP — đã gộp vào nv_ids)
         nv_ids = json.loads(shift.nv_ids or "[]")
         for nv_id in nv_ids:
             if nv_id in counts:
@@ -339,16 +376,12 @@ def get_monthly_summary(db: Session, month: int, year: int) -> dict:
     ).all()
 
     by_type: dict = {}
-    sp_warnings = 0
     for s in shifts:
         by_type[s.shift_type] = by_type.get(s.shift_type, 0) + 1
-        if s.sp_warning:
-            sp_warnings += 1
 
     return {
         "month": month,
         "year": year,
         "total_shifts": len(shifts),
-        "sp_warnings": sp_warnings,
         "by_type": by_type,
     }

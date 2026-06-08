@@ -32,6 +32,7 @@ def _run_migrations():
     _migrations = [
         "ALTER TABLE staff ADD COLUMN is_sp_backup INTEGER DEFAULT 0",   # T3
         "ALTER TABLE shift_config ADD COLUMN signer_name TEXT",           # N1
+        "ALTER TABLE staff ADD COLUMN can_do_sp INTEGER DEFAULT 0",       # SP→NV refactor
     ]
     with engine.connect() as conn:
         for stmt in _migrations:

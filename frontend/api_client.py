@@ -300,20 +300,13 @@ def confirm_week_shifts(week_start: str) -> Optional[dict]:
     return _post("/schedule/confirm-week", params={"week_start": week_start})
 
 
-def update_shift(shift_id: int, leader_id: int = None, sp_id: int = None,
-                 nv_ids: list = None, sp_warning: str = None,
-                 clear_sp: bool = False) -> Optional[dict]:
+def update_shift(shift_id: int, leader_id: int = None,
+                 nv_ids: list = None) -> Optional[dict]:
     body: dict = {}
     if leader_id is not None:
         body["leader_id"] = leader_id
-    if clear_sp:
-        body["clear_sp"] = True
-    elif sp_id is not None:
-        body["sp_id"] = sp_id
     if nv_ids is not None:
         body["nv_ids"] = nv_ids
-    if sp_warning is not None:
-        body["sp_warning"] = sp_warning
     return _put(f"/schedule/{shift_id}", json=body)
 
 

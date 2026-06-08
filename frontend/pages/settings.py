@@ -893,9 +893,9 @@ def _render_rotation_table(rot_state: dict):
 
     # Sort: role type → shift_count ASC → name
     _rot_order = {
-        "LD": 0, "SP": 1, "NV": 2,
-        "LD_friday": 3, "NV_friday": 4,
-        "LD_cutoff": 5, "NV_cutoff": 6,
+        "LD": 0, "NV": 1,
+        "LD_friday": 2, "NV_friday": 3,
+        "LD_cutoff": 4, "NV_cutoff": 5,
     }
     sorted_data = sorted(
         data,
@@ -904,7 +904,6 @@ def _render_rotation_table(rot_state: dict):
 
     _rotation_labels = {
         "LD":        ("LĐ thường",   "blue-7"),
-        "SP":        ("SP thường",   "purple-7"),
         "NV":        ("NV thường",   "green-7"),
         "LD_friday": ("LĐ Thứ 6",   "orange-7"),
         "NV_friday": ("NV Thứ 6",   "orange-5"),

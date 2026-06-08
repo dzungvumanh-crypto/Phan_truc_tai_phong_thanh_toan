@@ -1,21 +1,18 @@
 """
 shift_card.py — Component hiển thị 1 ô ca trực (shift).
 
-Hiển thị: LĐ (badge blue), SP (badge purple), NV list (green chips)
+Hiển thị: LĐ (badge blue), NV list (green chips)
          + badge loại ca (normal/friday/cutoff/settlement)
-         + warning badges (leader_sp / no_sp)
 """
 from nicegui import ui
 
 
 def _shift_has_staff(shift: dict, staff_id: int) -> bool:
-    """C2: Kiểm tra ca có chứa staff_id (với vai trò LĐ, SP hoặc NV) không."""
+    """C2: Kiểm tra ca có chứa staff_id (với vai trò LĐ hoặc NV) không."""
     leader = shift.get("leader") or {}
-    sp = shift.get("sp") or {}
     nvs = shift.get("nvs") or []
     return (
         leader.get("id") == staff_id
-        or sp.get("id") == staff_id
         or any(nv.get("id") == staff_id for nv in nvs)
     )
 
@@ -25,21 +22,18 @@ def render_shift_card_compact(shift: dict, on_edit_click=None,
                               highlight_staff_id=None):
     """
     Render compact version cho calendar/tuần view.
-    Hiển thị tên LĐ, SP và danh sách tên NV.
+    Hiển thị tên LĐ và danh sách tên NV.
     A4: on_edit_click — callback khi click nút ✏️ Sửa
     B6: on_confirm_click — callback khi click nút ✅ (chỉ hiện khi ca ở trạng thái draft)
     B5: on_unconfirm_click — callback khi click nút 🔄 (chỉ hiện khi ca ở trạng thái confirmed)
     C2: highlight_staff_id — highlight ca có người này, mờ ca không có
     """
     leader = shift.get("leader") or {}
-    sp = shift.get("sp") or {}
     nvs = shift.get("nvs") or []
-    sp_warning = shift.get("sp_warning")
 
     leader_name = leader.get("full_name", "?")
 
-    # Gop SP person (neu co) + NV thuong thanh 1 danh sach nhan vien
-    all_nv = ([sp.get("full_name", "?")] if sp else []) + [nv.get("full_name", "?") for nv in nvs]
+    all_nv = [nv.get("full_name", "?") for nv in nvs]
     if len(all_nv) > 3:
         nv_text = ", ".join(all_nv[:3]) + f" (+{len(all_nv)-3})"
     else:

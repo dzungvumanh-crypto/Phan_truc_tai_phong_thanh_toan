@@ -196,22 +196,16 @@ def build_week_excel(shifts: list, week_start: date, week_end: date,
             leader_name = ""
             if main_shift.get("leader"):
                 leader_name = main_shift["leader"].get("full_name", "")
-                if main_shift.get("sp_warning") == "leader_sp":
-                    leader_name += " (kiêm SP)"
 
-            sp = main_shift.get("sp") or {}
-            sp_name = sp.get("full_name", "")
             nvs = main_shift.get("nvs") or []
             nv_names = [nv.get("full_name", "") for nv in nvs]
-
-            all_nv = ([sp_name] if sp_name else []) + nv_names
-            all_nv_str = "\n".join(all_nv)
+            all_nv_str = "\n".join(nv_names)
 
             ws.merge_cells(f"C{current_row}:D{current_row}")
             _apply_row(ws, current_row,
                        [thu_label, date_label, all_nv_str, "", leader_name, "", "", ""],
                        fill_hex=CLR_SETTLE_BG, wrap=True)
-            ws.row_dimensions[current_row].height = max(30, 15 * max(1, len(all_nv)))
+            ws.row_dimensions[current_row].height = max(30, 15 * max(1, len(nv_names)))
             current_row += 1
 
             # ── Hàng sub (quyết toán) ─────────────────────────
@@ -219,10 +213,7 @@ def build_week_excel(shifts: list, week_start: date, week_end: date,
 
             if sub_shift:
                 sub_nvs = sub_shift.get("nvs") or []
-                sub_sp = sub_shift.get("sp") or {}
-                sub_sp_name = sub_sp.get("full_name", "")
-                sub_nv_names = [nv.get("full_name", "") for nv in sub_nvs]
-                all_sub = ([sub_sp_name] if sub_sp_name else []) + sub_nv_names
+                all_sub = [nv.get("full_name", "") for nv in sub_nvs]
                 mid = (len(all_sub) + 1) // 2
                 sub_col_c = "\n".join(all_sub[:mid])
                 sub_col_d = "\n".join(all_sub[mid:])
@@ -252,18 +243,13 @@ def build_week_excel(shifts: list, week_start: date, week_end: date,
             nv_count = 1
 
             if shift:
-                sp_warning = shift.get("sp_warning")
                 if shift.get("leader"):
                     leader_name = shift["leader"].get("full_name", "")
-                    if sp_warning == "leader_sp":
-                        leader_name += " (kiêm SP)"
-                sp = shift.get("sp") or {}
-                sp_name = sp.get("full_name", "")
                 nvs = shift.get("nvs") or []
                 nv_names = [nv.get("full_name", "") for nv in nvs]
-
-                nv_col_c = sp_name                   # Cột C: luôn là SP
-                nv_col_d = "\n".join(nv_names)        # Cột D: tất cả NV, xuống dòng
+                mid = (len(nv_names) + 1) // 2
+                nv_col_c = "\n".join(nv_names[:mid])
+                nv_col_d = "\n".join(nv_names[mid:])
                 nv_count = max(1, len(nv_names))
 
             _apply_row(ws, current_row,

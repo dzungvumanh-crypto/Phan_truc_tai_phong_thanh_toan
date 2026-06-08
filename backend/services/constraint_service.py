@@ -181,7 +181,7 @@ def validate_nv_request(db: Session, staff_id: int, date_str: str,
         return False, f"Nhân sự đã khai báo vắng ngày {date_str}", 0, 0
 
     # N2: Slot limit theo role
-    if role in ("LD", "SP"):
+    if role == "LD":
         current, names = count_role_requests_for_date(db, date_str, year, role)
         # Lọc bỏ chính người đang đăng ký (trường hợp update)
         from backend.models.duty_models import Staff
@@ -189,8 +189,7 @@ def validate_nv_request(db: Session, staff_id: int, date_str: str,
         self_name = self_staff.full_name if self_staff else ""
         names_others = [n for n in names if n != self_name]
         if names_others:
-            role_label = "Lãnh đạo" if role == "LD" else "Song Phương"
-            msg = f"Đã có {role_label} đăng ký ngày này: {', '.join(names_others)}."
+            msg = f"Đã có Lãnh đạo đăng ký ngày này: {', '.join(names_others)}."
             return False, msg, len(names_others), 1
         return True, "OK", 0, 1
 
@@ -413,8 +412,6 @@ def get_week_assignees(db: Session, date_str: str) -> set:
     for s in shifts:
         if s.leader_id:
             ids.add(s.leader_id)
-        if s.sp_id:
-            ids.add(s.sp_id)
         for nv in db.query(DutyShiftNV).filter_by(shift_id=s.id).all():
             ids.add(nv.staff_id)
     return ids

@@ -160,11 +160,11 @@ def _pick_leader(db: Session, pool_ld: List[Staff], requests: dict,
 
 def _pick_sp(db: Session, pool: dict, requests: dict,
              year: int, date_str: str,
-             rotation_role: str = "SP") -> Tuple[Optional[Staff], Optional[str]]:
+             rotation_role: str = "NV") -> Tuple[Optional[Staff], Optional[str]]:
     """
-    Chon nguoi to SP xu ly Song Phuong. Chi 2 cap (backup LD duoc xu ly o _generate_*).
+    Chon nguoi xu ly nghiep vu Song Phuong tu pool NV co can_do_sp=1.
     Tra (person, warning_code): warning_code = None | 'no_sp'
-    rotation_role: 'SP' | 'SP_friday' | 'SP_cutoff'
+    rotation_role: 'NV' | 'NV_friday' | 'NV_cutoff'
     """
     pool_sp = pool["SP"]
     week_ids = get_week_assignees(db, date_str)
@@ -195,16 +195,16 @@ def _pick_sp(db: Session, pool: dict, requests: dict,
 
 def _pick_nvs(db: Session, pool_nv: List[Staff], requests: dict,
               year: int, date_str: str,
-              nv_slots: int, sp_warning: Optional[str],
+              nv_slots: int,
               rotation_role: str = "NV") -> List[Staff]:
     """
     Chọn danh sách NV cho ca.
     - Ưu tiên: once_ids (đảm bảo) → fresh (chưa trực tuần) → repeat
     - Trong mỗi nhóm: người đăng ký weekly trước, sau đó vòng xoay
     rotation_role: 'NV' | 'NV_friday' | 'NV_cutoff'
+    nv_slots: đã bao gồm extra NV nếu cần (caller tự tính)
     """
-    # Khi không có SP handler (leader_sp / no_sp): cần +1 NV để đủ 1 LĐ + 2 NV
-    actual_slots = nv_slots if sp_warning is None else nv_slots + 1
+    actual_slots = nv_slots
 
     week_ids = get_week_assignees(db, date_str)
     once_ids = set(requests.get("once_ids", set()))
@@ -244,14 +244,13 @@ def _pick_nvs(db: Session, pool_nv: List[Staff], requests: dict,
 # ══════════════════════════════════════════════════════════════
 
 def _build_shift(shift_date: str, shift_type: str, leader: Optional[Staff],
-                 sp: Optional[Staff], sp_warning: Optional[str],
                  nvs: List[Staff]) -> dict:
     return {
         "shift_date": shift_date,
         "shift_type": shift_type,
         "leader_id": leader.id if leader else None,
-        "sp_id": sp.id if sp else None,
-        "sp_warning": sp_warning,
+        "sp_id": None,
+        "sp_warning": None,
         "nv_ids": json.dumps([p.id for p in nvs]),
         "nv_count": len(nvs),
         "is_auto": 1,
@@ -266,12 +265,11 @@ def _build_shift(shift_date: str, shift_type: str, leader: Optional[Staff],
 def _generate_normal_or_friday(db: Session, date_str: str, year: int,
                                 nv_count: int,
                                 ld_role: str, nv_role: str,
-                                shift_type: str,
-                                sp_role: str = "SP") -> Tuple[List[dict], List[dict]]:
+                                shift_type: str) -> Tuple[List[dict], List[dict]]:
     """
     Sinh ca thường hoặc thứ Sáu.
     Trả (shifts, warnings).
-    sp_role: 'SP' | 'SP_friday'
+    SP-capable NV được pick từ pool["SP"] (can_do_sp=1), gộp vào nv_ids.
     """
     pool = get_available_pool(db, date_str)
     requests = get_requests_for_date(db, date_str, year)
@@ -280,12 +278,11 @@ def _generate_normal_or_friday(db: Session, date_str: str, year: int,
     leader = _pick_leader(db, pool["LD"], requests, year, date_str, ld_role)
 
     if leader and getattr(leader, "is_sp_backup", 0) == 1:
-        # LD la backup (My Linh/Bich Phuong) — tu xu ly SP, khong can to SP
         sp, sp_warn = None, "leader_sp"
         warnings.append({"date": date_str, "type": "leader_sp",
                          "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay {date_str}"})
     else:
-        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role=sp_role)
+        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role=nv_role)
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
                              "msg": f"Khong co ai tac nghiep Song Phuong ngay {date_str}"})
@@ -293,9 +290,14 @@ def _generate_normal_or_friday(db: Session, date_str: str, year: int,
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay {date_str}"})
 
-    nvs = _pick_nvs(db, pool["NV"], requests, year, date_str, nv_count, sp_warn, nv_role)
+    need_extra = sp_warn is not None
+    sp_id = sp.id if sp else None
+    nv_pool = [p for p in pool["NV"] if p.id != sp_id]
+    nvs = _pick_nvs(db, nv_pool, requests, year, date_str,
+                    nv_count + (1 if need_extra else 0), nv_role)
+    all_nvs = ([sp] + nvs) if sp else nvs
 
-    shift = _build_shift(date_str, shift_type, leader, sp, sp_warn, nvs)
+    shift = _build_shift(date_str, shift_type, leader, all_nvs)
     return [shift], warnings
 
 
@@ -318,16 +320,21 @@ def _generate_cutoff(db: Session, date_str: str, year: int,
         warnings.append({"date": date_str, "type": "leader_sp",
                          "msg": f"{leader.full_name} (LD) kiem Song Phuong ngay cutoff {date_str}"})
     else:
-        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role="SP_cutoff")
+        sp, sp_warn = _pick_sp(db, pool, requests, year, date_str, rotation_role="NV_cutoff")
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Khong co SP ngay cutoff {date_str}"})
+                             "msg": f"Khong co ai tac nghiep Song Phuong ngay cutoff {date_str}"})
         if not leader:
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay cutoff {date_str}"})
 
-    nvs = _pick_nvs(db, pool["NV"], requests, year, date_str, nv_count, sp_warn, "NV_cutoff")
-    shift = _build_shift(date_str, "cutoff", leader, sp, sp_warn, nvs)
+    need_extra = sp_warn is not None
+    sp_id = sp.id if sp else None
+    nv_pool = [p for p in pool["NV"] if p.id != sp_id]
+    nvs = _pick_nvs(db, nv_pool, requests, year, date_str,
+                    nv_count + (1 if need_extra else 0), "NV_cutoff")
+    all_nvs = ([sp] + nvs) if sp else nvs
+    shift = _build_shift(date_str, "cutoff", leader, all_nvs)
     return [shift], warnings
 
 
@@ -358,14 +365,18 @@ def _generate_settlement(db: Session, date_str: str, year: int,
         sp, sp_warn = _pick_sp(db, pool, requests, year, date_str)
         if sp_warn == "no_sp":
             warnings.append({"date": date_str, "type": "no_sp",
-                             "msg": f"Khong co SP ngay quyet toan {date_str}"})
+                             "msg": f"Khong co ai tac nghiep Song Phuong ngay quyet toan {date_str}"})
         if not leader:
             warnings.append({"date": date_str, "type": "no_leader",
                              "msg": f"Khong co Lanh dao kha dung ngay quyet toan {date_str}"})
 
-    nvs_main = _pick_nvs(db, pool["NV"], requests, year, date_str,
-                          nv_count, sp_warn, "NV")
-    shift_main = _build_shift(date_str, "settlement_main", leader, sp, sp_warn, nvs_main)
+    need_extra = sp_warn is not None
+    sp_id = sp.id if sp else None
+    nv_pool_main = [p for p in pool["NV"] if p.id != sp_id]
+    nvs_picked = _pick_nvs(db, nv_pool_main, requests, year, date_str,
+                            nv_count + (1 if need_extra else 0), "NV")
+    nvs_main = ([sp] + nvs_picked) if sp else nvs_picked
+    shift_main = _build_shift(date_str, "settlement_main", leader, nvs_main)
 
     # ─── CA PHỤ ──────────────────────────────────────────────
     used_ids = {p.id for p in nvs_main}
@@ -373,7 +384,7 @@ def _generate_settlement(db: Session, date_str: str, year: int,
     sub_count = max(1, len(remaining_nv) // 2)
     nvs_sub = remaining_nv[:sub_count]   # không cập nhật rotation
 
-    shift_sub = _build_shift(date_str, "settlement_sub", None, None, None, nvs_sub)
+    shift_sub = _build_shift(date_str, "settlement_sub", None, nvs_sub)
 
     return [shift_main, shift_sub], warnings
 
@@ -453,13 +464,13 @@ def generate_schedule(db: Session, month: int, year: int,
             shifts, warns = _generate_normal_or_friday(
                 db, date_str, year, nv_count,
                 ld_role="LD_friday", nv_role="NV_friday",
-                sp_role="SP_friday", shift_type="friday"
+                shift_type="friday"
             )
         else:
             shifts, warns = _generate_normal_or_friday(
                 db, date_str, year, nv_count,
                 ld_role="LD", nv_role="NV",
-                sp_role="SP", shift_type="normal"
+                shift_type="normal"
             )
 
         # Lưu các ca vừa sinh
@@ -543,13 +554,13 @@ def generate_schedule_for_week(db: Session, week_start_str: str,
             shifts, warns = _generate_normal_or_friday(
                 db, date_str, year, nv_count,
                 ld_role="LD_friday", nv_role="NV_friday",
-                sp_role="SP_friday", shift_type="friday"
+                shift_type="friday"
             )
         else:
             shifts, warns = _generate_normal_or_friday(
                 db, date_str, year, nv_count,
                 ld_role="LD", nv_role="NV",
-                sp_role="SP", shift_type="normal"
+                shift_type="normal"
             )
 
         for shift_data in shifts:
@@ -599,11 +610,10 @@ def _save_shift(db: Session, data: dict) -> DutyShift:
 # ROTATION INIT
 # ══════════════════════════════════════════════════════════════
 
-ALL_ROTATION_ROLES = ["LD", "SP", "NV", "LD_friday", "SP_friday", "NV_friday", "LD_cutoff", "SP_cutoff", "NV_cutoff"]
+ALL_ROTATION_ROLES = ["LD", "NV", "LD_friday", "NV_friday", "LD_cutoff", "NV_cutoff"]
 
 ROLE_MAP = {
     "LD": ["LD", "LD_friday", "LD_cutoff"],
-    "SP": ["SP", "SP_friday", "SP_cutoff"],
     "NV": ["NV", "NV_friday", "NV_cutoff"],
 }
 

@@ -280,12 +280,9 @@ def _open_edit_dialog(shift: dict, state: dict):
     """A4: Dialog sửa tay ca trực."""
     all_staff = api_client.get_staff() or []
     ld_options = {s["id"]: s["full_name"] for s in all_staff if s.get("role") == "LD"}
-    sp_options = {0: "(Bỏ trống SP)"}
-    sp_options.update({s["id"]: s["full_name"] for s in all_staff if s.get("role") == "SP"})
     nv_options = {s["id"]: s["full_name"] for s in all_staff if s.get("role") == "NV"}
 
     current_leader_id = (shift.get("leader") or {}).get("id")
-    current_sp_id = (shift.get("sp") or {}).get("id") or 0
     current_nv_ids = [nv["id"] for nv in (shift.get("nvs") or [])]
 
     shift_date = shift.get("shift_date", "")
@@ -298,10 +295,6 @@ def _open_edit_dialog(shift: dict, state: dict):
 
         sel_ld = ui.select(
             ld_options, value=current_leader_id, label="Lãnh đạo"
-        ).classes("w-full mb-2")
-
-        sel_sp = ui.select(
-            sp_options, value=current_sp_id, label="Song Phương (0 = bỏ trống)"
         ).classes("w-full mb-2")
 
         sel_nv = ui.select(
@@ -318,12 +311,9 @@ def _open_edit_dialog(shift: dict, state: dict):
                 if not nv_ids:
                     common.show_notify("⚠️ Cần chọn ít nhất 1 NV", type="warning")
                     return
-                sp_val = sel_sp.value
                 result = api_client.update_shift(
                     shift["id"],
                     leader_id=sel_ld.value,
-                    sp_id=sp_val if sp_val and sp_val != 0 else None,
-                    clear_sp=(sp_val == 0),
                     nv_ids=nv_ids,
                 )
                 dlg.close()

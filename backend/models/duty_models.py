@@ -17,19 +17,20 @@ from backend.database import Base
 
 
 class Staff(Base):
-    """25 nhân sự cố định của phòng (LĐ / SP / NV)."""
+    """25 nhân sự cố định của phòng (LĐ / NV)."""
     __tablename__ = "staff"
 
     id            = Column(Integer, primary_key=True, index=True)
     full_name     = Column(String(100), nullable=False)
-    role          = Column(String(10), nullable=False)   # 'LD' | 'SP' | 'NV'
+    role          = Column(String(10), nullable=False)   # 'LD' | 'NV'
     is_on_project = Column(Integer, default=0)           # 0/1
-    is_sp_backup  = Column(Integer, default=0)           # T3: 1 = kiêm nhiệm SP khi thiếu
+    is_sp_backup  = Column(Integer, default=0)           # T3: 1 = LD kiêm Song Phương khi thiếu
+    can_do_sp     = Column(Integer, default=0)           # 1 = NV có thể xử lý nghiệp vụ Song Phương
     display_order = Column(Integer, default=0)
     created_at    = Column(String(30), default=lambda: datetime.now().isoformat(timespec="seconds"))
 
     __table_args__ = (
-        CheckConstraint("role IN ('LD','SP','NV')", name="chk_staff_role"),
+        CheckConstraint("role IN ('LD','NV')", name="chk_staff_role"),
     )
 
     # Relationships

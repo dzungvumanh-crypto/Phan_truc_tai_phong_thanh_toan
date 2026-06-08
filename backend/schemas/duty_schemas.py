@@ -25,7 +25,8 @@ class StaffOut(BaseModel):
     full_name: str
     role: str
     is_on_project: bool
-    is_sp_backup: int = 0   # T3: 1 = kiêm nhiệm SP khi thiếu
+    is_sp_backup: int = 0   # T3: 1 = LD kiêm Song Phương khi thiếu
+    can_do_sp: int = 0       # 1 = NV có thể xử lý nghiệp vụ Song Phương
     display_order: int
 
     model_config = {"from_attributes": True}
@@ -37,8 +38,9 @@ class StaffToggleOut(StaffOut):
 
 class StaffCreate(BaseModel):
     full_name: str
-    role: Literal["LD", "SP", "NV"]
+    role: Literal["LD", "NV"]
     is_on_project: bool = False
+    can_do_sp: bool = False
     display_order: int = 99
 
     @field_validator("full_name")
@@ -52,9 +54,10 @@ class StaffCreate(BaseModel):
 
 class StaffUpdate(BaseModel):
     full_name: Optional[str] = None
-    role: Optional[Literal["LD", "SP", "NV"]] = None
+    role: Optional[Literal["LD", "NV"]] = None
     is_on_project: Optional[bool] = None
     is_sp_backup: Optional[int] = None   # T3
+    can_do_sp: Optional[int] = None
     display_order: Optional[int] = None
 
     @field_validator("full_name")
@@ -219,8 +222,6 @@ class ShiftOut(BaseModel):
     shift_date: str
     shift_type: str
     leader: Optional[StaffOut] = None
-    sp: Optional[StaffOut] = None
-    sp_warning: Optional[str] = None   # None | 'leader_sp' | 'no_sp'
     nvs: List[StaffOut] = []
     nv_count: int
     is_auto: bool
@@ -232,10 +233,7 @@ class ShiftOut(BaseModel):
 
 class ShiftUpdate(BaseModel):
     leader_id: Optional[int] = None
-    sp_id: Optional[int] = None
-    clear_sp: bool = False  # V1: True = xóa SP về NULL; sp_id=None không đủ để phân biệt
     nv_ids: List[int] = []
-    sp_warning: Optional[str] = None
 
 
 class GenerateRequest(BaseModel):
@@ -300,7 +298,6 @@ class MonthlySummary(BaseModel):
     month: int
     year: int
     total_shifts: int
-    sp_warnings: int
     by_type: dict
 
 
