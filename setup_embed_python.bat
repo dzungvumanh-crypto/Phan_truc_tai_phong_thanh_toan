@@ -1,150 +1,158 @@
 @echo off
 chcp 65001 >nul
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title Chuan bi Python portable - PTT Agribank
 
 echo.
 echo  ============================================
 echo    Chuan bi goi cai dat OFFLINE
-echo    (Chay 1 lan tren may CO INTERNET)
+echo    Chay 1 lan tren may CO INTERNET
 echo  ============================================
 echo.
 echo  Script nay se:
-echo    1. Tai Python 3.11.9 portable (~25 MB)
-echo    2. Cau hinh Python portable
-echo    3. Tai pip
+echo    1. Tai Python 3.11.9 portable
+echo    2. Kich hoat site-packages
+echo    3. Cai pip
 echo    4. Cai thu vien vao Python portable
 echo.
-echo  Sau khi xong, copy toan bo thu muc nay sang
-echo  may khac va chay start.bat la duoc.
+echo  Sau khi xong, copy ca thu muc sang may
+echo  khac va chay start.bat -- khong can internet.
 echo.
 pause
 
-set BASE=%~dp0
-set EMBED_DIR=%BASE%python_embed
-set EMBED_ZIP=%BASE%_python_embed_tmp.zip
-set EMBED_URL=https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
-set GETPIP_URL=https://bootstrap.pypa.io/get-pip.py
-set PACKAGES_DIR=%BASE%packages
-set REQ_FILE=%BASE%requirements.txt
+:: ── Khai bao duong dan (dung %~dp0 truc tiep, tranh loi khoang trang) ──
+set "EMBED_URL=https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
+set "GETPIP_URL=https://bootstrap.pypa.io/get-pip.py"
+set "EMBED_DIR=%~dp0python_embed"
+set "EMBED_ZIP=%~dp0_py_tmp.zip"
+set "GETPIP_FILE=%~dp0_get_pip.py"
+set "PACKAGES_DIR=%~dp0packages"
+set "REQ_FILE=%~dp0requirements.txt"
+set "PYTHON_EXE=%~dp0python_embed\python.exe"
+set "PIP_EXE=%~dp0python_embed\Scripts\pip.exe"
 
-:: ── 1. Tai Python embedded ──────────────────────────────────
-if exist "%EMBED_DIR%\python.exe" (
+echo  [INFO] EMBED_DIR : %EMBED_DIR%
+echo  [INFO] PACKAGES  : %PACKAGES_DIR%
+echo  [INFO] REQ_FILE  : %REQ_FILE%
+echo.
+
+:: ─────────────────────────────────────────────────────────────────────────────
+:: BUOC 1: TAI PYTHON 3.11.9 PORTABLE
+:: ─────────────────────────────────────────────────────────────────────────────
+if exist "%PYTHON_EXE%" (
     echo  [1/4] Python portable da co. Bo qua.
-    goto :check_pip
+    goto :step2
 )
 
 echo  [1/4] Dang tai Python 3.11.9 portable...
-echo        URL: %EMBED_URL%
-echo.
 curl -L --progress-bar -o "%EMBED_ZIP%" "%EMBED_URL%"
-if errorlevel 1 (
+if !errorlevel! neq 0 (
     echo.
-    echo  [LOI] Khong tai duoc Python. Kiem tra ket noi internet!
+    echo  [LOI] Khong tai duoc! Kiem tra ket noi internet.
     echo.
     pause
     exit /b 1
 )
 
 if not exist "%EMBED_DIR%" mkdir "%EMBED_DIR%"
-echo  Giai nen Python portable...
-powershell -Command "Expand-Archive -Path '%EMBED_ZIP%' -DestinationPath '%EMBED_DIR%' -Force"
-del "%EMBED_ZIP%" 2>nul
+echo  Giai nen...
+powershell -Command "Expand-Archive -LiteralPath '%EMBED_ZIP%' -DestinationPath '%EMBED_DIR%' -Force"
+if exist "%EMBED_ZIP%" del "%EMBED_ZIP%"
 
-if not exist "%EMBED_DIR%\python.exe" (
+if not exist "%PYTHON_EXE%" (
     echo  [LOI] Giai nen that bai!
     pause
     exit /b 1
 )
 echo  [OK] Python portable san sang.
 
-:: ── 2. Kich hoat site-packages ─────────────────────────────
+:: ─────────────────────────────────────────────────────────────────────────────
+:: BUOC 2: KICH HOAT SITE-PACKAGES TRONG _pth FILE
+:: ─────────────────────────────────────────────────────────────────────────────
+:step2
 echo  [2/4] Kich hoat site-packages...
-for %%f in ("%EMBED_DIR%\python3*._pth") do (
-    powershell -Command "(Get-Content '%%f') -replace '#import site', 'import site' | Set-Content '%%f' -Encoding ascii"
-)
-echo  [OK] Cau hinh xong.
+powershell -Command "Get-ChildItem '%EMBED_DIR%\python3*._pth' | ForEach-Object { (Get-Content $_.FullName) -replace '#import site','import site' | Set-Content $_.FullName -Encoding ascii }"
+echo  [OK] Kich hoat xong.
 
-:check_pip
-:: ── 3. Cai pip ─────────────────────────────────────────────
-if exist "%EMBED_DIR%\Scripts\pip.exe" (
+:: ─────────────────────────────────────────────────────────────────────────────
+:: BUOC 3: CAI PIP
+:: ─────────────────────────────────────────────────────────────────────────────
+:step3
+if exist "%PIP_EXE%" (
     echo  [3/4] Pip da co. Bo qua.
-    goto :install_packages
+    goto :step4
 )
 
-echo  [3/4] Dang cai pip...
-curl -L -o "%BASE%_get_pip.py" "%GETPIP_URL%"
-if errorlevel 1 (
+echo  [3/4] Dang tai pip...
+curl -L -o "%GETPIP_FILE%" "%GETPIP_URL%"
+if !errorlevel! neq 0 (
     echo  [LOI] Khong tai duoc pip!
     pause
     exit /b 1
 )
-"%EMBED_DIR%\python.exe" "%BASE%_get_pip.py" --no-warn-script-location -q
-del "%BASE%_get_pip.py" 2>nul
 
-if not exist "%EMBED_DIR%\Scripts\pip.exe" (
+"%PYTHON_EXE%" "%GETPIP_FILE%" --no-warn-script-location -q
+if exist "%GETPIP_FILE%" del "%GETPIP_FILE%"
+
+if not exist "%PIP_EXE%" (
     echo  [LOI] Cai pip that bai!
     pause
     exit /b 1
 )
 echo  [OK] Pip da cai xong.
 
-:install_packages
-:: ── 4. Cai thu vien ────────────────────────────────────────
-echo  [4/4] Cai thu vien vao Python portable...
+:: ─────────────────────────────────────────────────────────────────────────────
+:: BUOC 4: CAI THU VIEN
+:: ─────────────────────────────────────────────────────────────────────────────
+:step4
+echo  [4/4] Dang cai thu vien vao Python portable...
 
-:: Dem so whl trong packages/
-set PKG_OK=0
-if exist "%PACKAGES_DIR%\" (
-    for %%f in ("%PACKAGES_DIR%\*.whl") do set PKG_OK=1
+:: Kiem tra co file whl trong packages/ khong (dung wildcard)
+set "HAS_WHL=0"
+if exist "%PACKAGES_DIR%\*.whl" set "HAS_WHL=1"
+
+if "!HAS_WHL!"=="1" (
+    echo       Tim thay packages\ -- cai offline...
+    "%PYTHON_EXE%" -m pip install --no-index --find-links "%PACKAGES_DIR%" -r "%REQ_FILE%" --no-warn-script-location -q --disable-pip-version-check
+    if !errorlevel! equ 0 goto :verify
+    echo  [!] Cai offline co loi, thu tai tu PyPI...
 )
 
-if "%PKG_OK%"=="1" (
-    echo      Su dung packages\ co san (offline)...
-    "%EMBED_DIR%\python.exe" -m pip install ^
-        --no-index "--find-links=%PACKAGES_DIR%" ^
-        -r "%REQ_FILE%" ^
-        --no-warn-script-location -q --disable-pip-version-check
-) else (
-    echo      packages\ trong — tai tu PyPI...
-    if not exist "%PACKAGES_DIR%" mkdir "%PACKAGES_DIR%"
-    "%EMBED_DIR%\python.exe" -m pip download ^
-        -r "%REQ_FILE%" -d "%PACKAGES_DIR%" ^
-        --platform win_amd64 --python-version 3.11 ^
-        --implementation cp --abi cp311 --only-binary :all: ^
-        -q --disable-pip-version-check
-    "%EMBED_DIR%\python.exe" -m pip install ^
-        --no-index "--find-links=%PACKAGES_DIR%" ^
-        -r "%REQ_FILE%" ^
-        --no-warn-script-location -q --disable-pip-version-check
+:: Fallback: tai tu PyPI
+echo       Dang tai tu PyPI...
+if not exist "%PACKAGES_DIR%" mkdir "%PACKAGES_DIR%"
+"%PYTHON_EXE%" -m pip download -r "%REQ_FILE%" -d "%PACKAGES_DIR%" --platform win_amd64 --python-version 3.11 --implementation cp --abi cp311 --only-binary :all: -q --disable-pip-version-check
+if !errorlevel! neq 0 (
+    echo  [LOI] Tai packages that bai! Kiem tra internet.
+    pause
+    exit /b 1
 )
-
-if errorlevel 1 (
-    echo.
+"%PYTHON_EXE%" -m pip install --no-index --find-links "%PACKAGES_DIR%" -r "%REQ_FILE%" --no-warn-script-location -q --disable-pip-version-check
+if !errorlevel! neq 0 (
     echo  [LOI] Cai thu vien that bai!
-    echo        Thu chay lai hoac kiem tra requirements.txt
     pause
     exit /b 1
 )
 
+:verify
 echo  [OK] Thu vien da cai xong.
+echo.
+echo  Dang kiem tra...
+"%PYTHON_EXE%" -c "import fastapi, nicegui, uvicorn, sqlalchemy; print('  [OK] Tat ca thu vien chinh san sang.')"
+if !errorlevel! neq 0 (
+    echo  [CANH BAO] Mot so thu vien co the chua duoc cai du.
+)
 
 echo.
 echo  ============================================
-echo   HOAN TAT! Thu muc nay DA SAN SANG de
-echo   copy sang may KHONG CO INTERNET.
+echo   HOAN TAT!
 echo.
-echo   Cau truc can copy:
-echo     python_embed\    Python portable
-echo     packages\        Thu vien du phong
-echo     backend\
-echo     frontend\
-echo     database\
-echo     launcher.py
-echo     start.bat
-echo     ... (cac file khac)
+echo   Ca thu muc nay san sang de copy sang
+echo   may khac va chay khong can internet.
 echo.
 echo   Tren may dich: chi can chay start.bat
 echo  ============================================
 echo.
 pause
+endlocal
