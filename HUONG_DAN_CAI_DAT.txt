@@ -3,58 +3,62 @@
   Huong dan cai dat va su dung
 ====================================================
 
-YEU CAU HE THONG
-----------------
-- Windows 10/11 (64-bit)
-- Python 3.11  (download tai https://www.python.org/downloads/release/python-3110/)
 
-LUU Y QUAN TRONG KHI CAI PYTHON:
-  Trong man hinh cai dat Python, PHAI tich chon:
-    [x] Add Python to PATH
-    [x] Install for all users  (khuyen nghi)
+CAI DAT LAN DAU — KHONG CAN INTERNET (phuong phap moi)
+-------------------------------------------------------
+Dieu kien: Thu muc co san "python_embed\" (da duoc chuan bi san).
+
+1. Copy toan bo thu muc sang may tinh dich
+   (vi du: D:\PhanLichTruc\)
+
+2. Nhan dup-click vao file  start.bat
+   - Tu dong su dung Python portable trong python_embed\
+   - KHONG CAN cai Python tren may
+   - KHONG CAN internet
+
+3. Trinh duyet tu dong mo giao dien tai: http://localhost:8081
 
 
-CAI DAT LAN DAU (chi can lam 1 lan)
--------------------------------------
-1. Cai Python 3.11 nhu huong dan o tren
+CHUAN BI GOI OFFLINE (chi can lam 1 lan, tren may CO INTERNET)
+---------------------------------------------------------------
+Neu chua co thu muc "python_embed\", can chuan bi tren may co internet:
 
-2. Sao chep thu muc chuong trinh vao may tinh
-   (vi du: C:\PhanLichTruc\)
+1. Copy thu muc chuong trinh vao may co internet
 
-3. Nhan dup-click vao file  start.bat
-   - Lan dau chay se tu dong tao moi truong ao (venv)
-     va cai cac thu vien can thiet tu thu muc packages/
-     (KHONG CAN INTERNET)
-   - Qua trinh nay mat khoang 1-2 phut
+2. Chay file  setup_embed_python.bat
+   - Tu dong tai Python 3.11.9 portable (~25 MB)
+   - Cai tat ca thu vien can thiet
+   - Tao thu muc python_embed\
 
-4. Sau khi cai dat xong, trinh duyet se tu dong mo
-   Giao dien tai: http://localhost:8081
+3. Copy toan bo thu muc (gio da co python_embed\) sang may dich
+   va chay start.bat binh thuong.
 
 
 SU DUNG HANG NGAY
 ------------------
 - Nhan dup-click vao  start.bat
-- Cho den khi trinh duyet tu dong mo
+- Cho den khi trinh duyet tu dong mo (khoang 30-60 giay)
 - De tat: nhan Enter trong cua so "Phan lich truc"
 
 
 CAU TRUC THU MUC
 -----------------
-  start.bat          <- FILE CHAY CHINH
-  launcher.py        <- Script khoi dong
-  packages/          <- Thu vien Python (cai offline)
-  venv/              <- Moi truong ao (tu dong tao khi chay lan dau)
-  database/          <- Co so du lieu SQLite
-  backend/           <- FastAPI server (port 8001)
-  frontend/          <- NiceGUI UI (port 8081)
+  start.bat                <- FILE CHAY CHINH
+  setup_embed_python.bat   <- Chuan bi goi offline (may co internet)
+  launcher.py              <- Script khoi dong
+  python_embed\            <- Python 3.11 portable (tu dong dung, khong can cai)
+  packages\                <- Thu vien du phong (whl)
+  database\                <- Co so du lieu SQLite
+  backend\                 <- FastAPI server (port 8001)
+  frontend\                <- NiceGUI UI (port 8081)
 
 
 XU LY SU CO
 -----------
-- Neu bao loi "Python not found": Kiem tra lai da cai Python
-  va co chon "Add to PATH" chua
 - Neu trinh duyet khong tu mo: Mo thu cong tai http://localhost:8081
-- Neu co loi khac: Xem chi tiet trong cua so Backend/Frontend
+- Neu bao loi "Python not found": Chay setup_embed_python.bat
+  tren may co internet de tao python_embed\
+- Neu co loi khac: Xem chi tiet trong cua so Backend / Frontend
 
 
 ====================================================

@@ -4,12 +4,16 @@ launcher.py — Khởi động Backend + Frontend, poll đến khi thực sự r
 Gọi từ start.bat:
     python launcher.py
 
-Luồng:
+Luồng (chế độ embedded — python_embed có sẵn):
+  1. Dùng ngay python_embed/python.exe (bỏ qua venv)
+  2. Khởi động Backend (port 8001)
+  3. Khởi động Frontend (port 8081)
+  4. Mở trình duyệt
+
+Luồng (chế độ system Python — fallback):
   1. Tạo venv (nếu chưa có)
   2. Cài packages từ packages/ (offline) hoặc PyPI (online)
-  3. Khởi động Backend (port 8001)
-  4. Khởi động Frontend (port 8081)
-  5. Mở trình duyệt
+  3-4. Như trên
 """
 import sys
 import os
@@ -24,9 +28,14 @@ VENV_DIR     = os.path.join(BASE_DIR, "venv")
 PACKAGES_DIR = os.path.join(BASE_DIR, "packages")
 REQ_FILE     = os.path.join(BASE_DIR, "requirements.txt")
 
+EMBED_PYTHON = os.path.join(BASE_DIR, "python_embed", "python.exe")
 VENV_PYTHON  = os.path.join(VENV_DIR, "Scripts", "python.exe")   # Windows only
 BACKEND_URL  = "http://localhost:8001"
 FRONTEND_URL = "http://localhost:8081"
+
+# Kiểm tra đang chạy từ embedded Python hay không
+_exe = os.path.abspath(sys.executable).lower()
+IS_EMBEDDED = _exe.startswith(os.path.join(BASE_DIR, "python_embed").lower())
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -61,12 +70,21 @@ def run(cmd, **kwargs):
 
 # ─── setup venv ───────────────────────────────────────────────────────────────
 
-def setup_venv() -> str:
+def get_python_exe() -> str:
     """
-    Tạo venv nếu chưa có, cài packages.
-    Trả về đường dẫn Python trong venv.
+    Trả về đường dẫn Python sẽ dùng để chạy backend/frontend.
+    - Nếu đang chạy từ embedded Python → dùng luôn sys.executable.
+    - Nếu không → tạo/dùng venv, cài packages, trả về venv Python.
     """
-    # ── Kiểm tra Python version ──
+    if IS_EMBEDDED:
+        print("  [OK] Dang dung Python portable (khong can cai dat them).")
+        return sys.executable
+
+    return _setup_venv()
+
+
+def _setup_venv() -> str:
+    """Tạo venv + cài packages khi dùng system Python."""
     major, minor = sys.version_info[:2]
     if major < 3 or (major == 3 and minor < 10):
         print(f"  [LOI] Can Python 3.10+, dang dung {major}.{minor}")
@@ -74,7 +92,6 @@ def setup_venv() -> str:
         input("  Nhan Enter de thoat...")
         sys.exit(1)
 
-    # ── Tạo venv ──
     if not os.path.exists(VENV_PYTHON):
         print("  [*] Tao moi truong ao (venv)...", flush=True)
         r = run([sys.executable, "-m", "venv", VENV_DIR])
@@ -86,12 +103,10 @@ def setup_venv() -> str:
 
     pip = VENV_PYTHON
 
-    # ── Nâng cấp pip silently ──
     run([pip, "-m", "pip", "install", "--upgrade", "pip",
          "-q", "--disable-pip-version-check"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # ── Cài packages: offline trước, fallback online ──
     offline_ok = (os.path.isdir(PACKAGES_DIR)
                   and len(os.listdir(PACKAGES_DIR)) > 0)
 
@@ -126,7 +141,7 @@ def main():
 
     # ── 0. Chuẩn bị môi trường ────────────────────────────────
     print("  [0/3] Kiem tra moi truong...", flush=True)
-    python_exe = setup_venv()
+    python_exe = get_python_exe()
     print()
 
     # ── 1. Backend ────────────────────────────────────────────
